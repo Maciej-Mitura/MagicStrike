@@ -1,4 +1,4 @@
-🎳 Bowling Score Tracker 🎳  
+🎳 MagicStrike 🎳  
 
 A Flutter-based mobile app for tracking and improving your bowling performance. Unlike a website, this app leverages mobile-exclusive features for a seamless, interactive experience.
 
