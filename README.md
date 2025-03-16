@@ -1,5 +1,7 @@
-🎳 Bowling Score Tracker – Flutter App
+🎳 Bowling Score Tracker 🎳  
+
 A Flutter-based mobile app for tracking and improving your bowling performance. Unlike a website, this app leverages mobile-exclusive features for a seamless, interactive experience.
+
 
 🔹 Key Features:
 
