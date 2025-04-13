@@ -23,11 +23,9 @@ class FooterNav extends StatelessWidget {
         selectedItemColor: AppColors.whiteFillingText,
         unselectedItemColor: AppColors.ringBackground3rd,
         selectedLabelStyle: const TextStyle(
-          fontFamily: 'IstokWeb',
           fontWeight: FontWeight.bold,
         ),
         unselectedLabelStyle: const TextStyle(
-          fontFamily: 'IstokWeb',
           fontWeight: FontWeight.bold,
         ),
         items: const [

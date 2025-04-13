@@ -20,12 +20,16 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-  fonts:
-    - family: IstokWeb
-      fonts:
-        - asset: assets/fonts/IstokWeb-Regular.ttf
-        - asset: assets/fonts/IstokWeb-Bold.ttf
-          weight: 700
+  assets:
+    - assets/
+    - assets/fonts/
+  # Temporarily commenting out fonts until we have the files
+  # fonts:
+  #   - family: IstokWeb
+  #     fonts:
+  #       - asset: assets/fonts/IstokWeb-Regular.ttf
+  #       - asset: assets/fonts/IstokWeb-Bold.ttf
+  #         weight: 700
 
 flutter_icons:
   android: true
