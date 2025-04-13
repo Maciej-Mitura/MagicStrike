@@ -1,0 +1,2 @@
+C:/aMaciek/School/MCT/Y2/Sem2/SmartAppDev/EindProject/MagicStrike/magic_strike_flutter/android/app/.cxx/Debug/322p14g2/x86_64/CMakeFiles/edit_cache.dir
+C:/aMaciek/School/MCT/Y2/Sem2/SmartAppDev/EindProject/MagicStrike/magic_strike_flutter/android/app/.cxx/Debug/322p14g2/x86_64/CMakeFiles/rebuild_cache.dir
