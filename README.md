@@ -1,4 +1,4 @@
-🎳 MagicStrike 🎳  
+🎳 Bowling DeRing 🎳  
 
 A Flutter-based mobile app for tracking and improving your bowling performance. Unlike a website, this app leverages mobile-exclusive features for a seamless, interactive experience.
 
@@ -23,5 +23,5 @@ A Flutter-based mobile app for tracking and improving your bowling performance. 
 
 
 Built with Flutter & Dart, this app focuses on a fast, intuitive, and mobile-first experience that a website simply can't provide.
-
+Got the permission of Bowling DeRing Roeselare to utilize their logo & name for this project. This app is not meant for public use and distribution. It is strictly a project, to be used by me (the developer), my teachers and the owners/employees of Bowling DeRing and their trusted friends & partners.
 🚀 Under development by Maciej Mitura
