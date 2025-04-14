@@ -36,19 +36,11 @@ class HomePage extends StatefulWidget {
 
 class HomePageState extends State<HomePage> {
   int _selectedIndex = 0;
-  bool _showLogoInPlayScreen = true;
-
-  // Method to toggle logo visibility in play screen that can be called from outside
-  void toggleLogoVisibility(bool show) {
-    setState(() {
-      _showLogoInPlayScreen = show;
-    });
-  }
 
   final List<Widget> _screens = [
     HomeScreen(),
     StatsScreen(),
-    PlayScreen(),
+    const PlayScreen(),
     GamesHistoryScreen(),
     MoreSettingsScreen(),
   ];
@@ -56,27 +48,21 @@ class HomePageState extends State<HomePage> {
   void _onTabTapped(int index) {
     setState(() {
       _selectedIndex = index;
-      // Reset play screen logo visibility when navigating to play screen
-      if (index == 2) {
-        // Play screen index
-        _showLogoInPlayScreen = true;
-      }
     });
   }
 
   // Method to determine if app bar with logo should be shown
   PreferredSizeWidget? _buildAppBar() {
     // Show logo for Home (0), Stats (1), Games History (3) screens,
-    // conditionally for Play screen (2), and never for More screen (4)
+    // always for Play screen (2), and never for More screen (4)
     if (_selectedIndex == 0 ||
         _selectedIndex == 1 ||
-        _selectedIndex == 3 ||
-        (_selectedIndex == 2 && _showLogoInPlayScreen)) {
+        _selectedIndex == 2 ||
+        _selectedIndex == 3) {
       return AppBar(
-        backgroundColor: Colors.white, // Changed back to white
+        backgroundColor: Colors.white,
         title: Padding(
-          padding: const EdgeInsets.only(
-              top: 24.0), // Increased top padding from 8 to 24
+          padding: const EdgeInsets.only(top: 24.0),
           child: Image.asset(
             'assets/MyLogoRing.png',
             height: 100,
@@ -84,16 +70,16 @@ class HomePageState extends State<HomePage> {
           ),
         ),
         centerTitle: true,
-        toolbarHeight: 142, // Decreased from 158 to 142 (reduced by 16)
+        toolbarHeight: 142,
       );
     } else if (_selectedIndex == 4) {
       // For More screen, return an app bar without logo
       return AppBar(
-        backgroundColor: Colors.white, // Changed back to white
-        toolbarHeight: 142, // Decreased from 158 to 142 (reduced by 16)
+        backgroundColor: Colors.white,
+        toolbarHeight: 142,
       );
     } else {
-      // For Play screen when logo should be hidden
+      // This is now never reached, but we'll keep it for future flexibility
       return null;
     }
   }

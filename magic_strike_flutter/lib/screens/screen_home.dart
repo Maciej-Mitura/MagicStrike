@@ -10,88 +10,172 @@ class HomeScreen extends StatelessWidget {
 
     // Calculate the width and height of the game card
     final cardWidth = screenWidth * 0.85; // 85% of screen width
-    final cardHeight = cardWidth * 0.75; // 75% of card width
 
     // Placeholder data for latest games (to be replaced with backend data later)
     final latestGames = [
       {
         'id': 1,
         'date': '15 June 2023',
-        'frames': [
-          ['9', '/'],
-          ['X', ''],
-          ['8', '1'],
-          ['X', ''],
-          ['7', '/'],
-          ['9', '-'],
-          ['X', ''],
-          ['8', '/'],
-          ['7', '2'],
-          ['X', '8', '1']
+        'players': [
+          {
+            'name': 'John',
+            'frames': [
+              ['9', '/'],
+              ['X', ''],
+              ['8', '1'],
+              ['X', ''],
+              ['7', '/'],
+              ['9', '-'],
+              ['X', ''],
+              ['8', '/'],
+              ['7', '2'],
+              ['X', '8', '1']
+            ]
+          },
+          {
+            'name': 'Sarah',
+            'frames': [
+              ['8', '/'],
+              ['7', '2'],
+              ['X', ''],
+              ['9', '-'],
+              ['8', '/'],
+              ['7', '2'],
+              ['X', ''],
+              ['8', '1'],
+              ['9', '/'],
+              ['X', '7', '2']
+            ]
+          }
         ]
       },
       {
         'id': 2,
         'date': '10 June 2023',
-        'frames': [
-          ['1', '/'],
-          ['2', '/'],
-          ['3', '/'],
-          ['4', '/'],
-          ['5', '/'],
-          ['6', '/'],
-          ['7', '/'],
-          ['8', '-'],
-          ['1', '/'],
-          ['2', '-']
+        'players': [
+          {
+            'name': 'Michael',
+            'frames': [
+              ['X', ''],
+              ['X', ''],
+              ['9', '/'],
+              ['8', '1'],
+              ['X', ''],
+              ['X', ''],
+              ['7', '/'],
+              ['9', '-'],
+              ['X', ''],
+              ['X', 'X', '8']
+            ]
+          }
         ]
       },
       {
         'id': 3,
         'date': '5 June 2023',
-        'frames': [
-          ['8', '/'],
-          ['7', '2'],
-          ['X', ''],
-          ['9', '-'],
-          ['8', '/'],
-          ['7', '2'],
-          ['X', ''],
-          ['8', '1'],
-          ['9', '/'],
-          ['X', '7', '2']
+        'players': [
+          {
+            'name': 'Emily',
+            'frames': [
+              ['8', '/'],
+              ['7', '2'],
+              ['X', ''],
+              ['9', '-'],
+              ['8', '/'],
+              ['7', '2'],
+              ['X', ''],
+              ['8', '1'],
+              ['9', '/'],
+              ['X', '7', '2']
+            ]
+          },
+          {
+            'name': 'David',
+            'frames': [
+              ['7', '2'],
+              ['X', ''],
+              ['9', '/'],
+              ['X', ''],
+              ['8', '1'],
+              ['8', '/'],
+              ['7', '2'],
+              ['X', ''],
+              ['9', '-'],
+              ['8', '/']
+            ]
+          },
+          {
+            'name': 'Christopher',
+            'frames': [
+              ['X', ''],
+              ['8', '/'],
+              ['7', '2'],
+              ['X', ''],
+              ['9', '-'],
+              ['X', ''],
+              ['8', '/'],
+              ['7', '2'],
+              ['X', ''],
+              ['X', '8', '/']
+            ]
+          }
         ]
       },
       {
         'id': 4,
         'date': '28 May 2023',
-        'frames': [
-          ['X', ''],
-          ['8', '/'],
-          ['7', '2'],
-          ['X', ''],
-          ['9', '-'],
-          ['X', ''],
-          ['8', '/'],
-          ['7', '2'],
-          ['X', ''],
-          ['X', '8', '/']
+        'players': [
+          {
+            'name': 'Alex',
+            'frames': [
+              ['X', ''],
+              ['8', '/'],
+              ['7', '2'],
+              ['X', ''],
+              ['9', '-'],
+              ['X', ''],
+              ['8', '/'],
+              ['7', '2'],
+              ['X', ''],
+              ['X', '8', '/']
+            ]
+          },
+          {
+            'name': 'Jessica',
+            'frames': [
+              ['9', '/'],
+              ['X', ''],
+              ['8', '1'],
+              ['X', ''],
+              ['7', '/'],
+              ['9', '-'],
+              ['X', ''],
+              ['8', '/'],
+              ['7', '2'],
+              ['X', '8', '1']
+            ]
+          }
         ]
       },
       {
         'id': 5,
         'date': '20 May 2023',
-        'frames': [
-          ['X', ''],
-          ['X', ''],
-          ['X', ''],
-          ['8', '/'],
-          ['9', '-'],
-          ['X', ''],
-          ['X', ''],
-          ['7', '2'],
-          ['8', '/'],
-          ['X', 'X', 'X']
+        'players': [
+          {
+            'name': 'Thomas',
+            'frames': [
+              ['X', ''],
+              ['X', ''],
+              ['X', ''],
+              ['8', '/'],
+              ['9', '-'],
+              ['X', ''],
+              ['X', ''],
+              ['7', '2'],
+              ['8', '/'],
+              ['X', 'X', 'X']
+            ]
+          }
         ]
       },
     ];
@@ -286,28 +370,38 @@ class HomeScreen extends StatelessWidget {
               itemCount: latestGames.length,
               itemBuilder: (context, index) {
                 final game = latestGames[index];
-                final totalScore =
-                    calculateBowlingScore(game['frames'] as List);
 
                 return Padding(
                   padding:
                       const EdgeInsets.only(bottom: 16.0), // Gap between cards
                   child: Container(
                     width: cardWidth,
-                    height: cardHeight,
+                    // Set height based on player count plus space for header
+                    height: 90.0 + ((game['players'] as List).length * 35.0),
                     decoration: BoxDecoration(
-                      color: AppColors
-                          .ringBackground3rd, // Changed to ringBackground3rd
-                      borderRadius:
-                          BorderRadius.circular(12.0), // Figma spec: 12
-                      // No box shadow as requested
+                      color: AppColors.ringBackground3rd,
+                      borderRadius: BorderRadius.circular(12.0),
                     ),
                     child: Padding(
-                      padding: const EdgeInsets.all(16.0),
+                      padding: const EdgeInsets.all(12.0), // Reduce padding
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Frames grid - moved to top
+                          // Game date at the top
+                          Padding(
+                            padding: const EdgeInsets.only(
+                                bottom: 8.0), // Reduced bottom padding
+                            child: Text(
+                              game['date'].toString(),
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+
+                          // Frames grid with player names
                           Expanded(
                             child: Container(
                               decoration: BoxDecoration(
@@ -315,235 +409,352 @@ class HomeScreen extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(8.0),
                               ),
                               child: Padding(
-                                padding: const EdgeInsets.all(8.0),
+                                padding: const EdgeInsets.all(
+                                    2.0), // Reduced padding even more
                                 child: LayoutBuilder(
                                   builder: (context, constraints) {
                                     final availableWidth = constraints.maxWidth;
-                                    final frameWidth = availableWidth / 10;
+                                    // Decrease name column width to 15% to give more space to frames
+                                    final nameColumnWidth =
+                                        availableWidth * 0.15;
+                                    // Allocate width for frames (80%) and total score column (5%)
+                                    final framesWidth = availableWidth * 0.80;
+                                    final totColumnWidth =
+                                        availableWidth * 0.05;
+                                    // Calculate frame width from available frames space
+                                    final frameWidth = (framesWidth / 10) -
+                                        1; // Account for spacing
+                                    // Calculate a proper frame height that won't overflow
+                                    final frameHeight = frameWidth *
+                                        0.9; // Slightly shorter than width
 
-                                    return Column(
+                                    // Create a row of frame numbers at the top
+                                    final frameHeaders = Row(
                                       children: [
-                                        // Row moved to top instead of using Spacer
-                                        Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.spaceEvenly,
-                                          children:
-                                              List.generate(10, (frameIndex) {
-                                            // Get the frame data
-                                            List<dynamic> frame =
-                                                (game['frames']
-                                                    as List)[frameIndex];
-
-                                            // For the 10th frame which may have 3 throws
-                                            bool isTenthFrame = frameIndex == 9;
-                                            bool isStrike = frame.isNotEmpty &&
-                                                frame[0] == 'X';
-                                            bool hasThirdThrow = isTenthFrame &&
-                                                frame.length > 2;
-
-                                            return SizedBox(
-                                              width: frameWidth,
-                                              child: Column(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  // Frame number
-                                                  Container(
-                                                    padding: const EdgeInsets
-                                                        .symmetric(vertical: 2),
-                                                    width: double.infinity,
-                                                    decoration:
-                                                        const BoxDecoration(
-                                                      color: Color(
-                                                          0xFFF72C22), // ringPrimary
-                                                      borderRadius:
-                                                          BorderRadius.only(
-                                                        topLeft:
-                                                            Radius.circular(3),
-                                                        topRight:
-                                                            Radius.circular(3),
-                                                      ),
+                                        // Empty space above player names
+                                        SizedBox(width: nameColumnWidth),
+                                        // Frame numbers
+                                        SizedBox(
+                                          width: framesWidth,
+                                          child: Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.spaceBetween,
+                                            children:
+                                                List.generate(10, (frameIndex) {
+                                              return SizedBox(
+                                                width: frameWidth,
+                                                child: Container(
+                                                  padding: const EdgeInsets
+                                                      .symmetric(vertical: 2),
+                                                  decoration:
+                                                      const BoxDecoration(
+                                                    color:
+                                                        AppColors.ringPrimary,
+                                                    borderRadius:
+                                                        BorderRadius.only(
+                                                      topLeft:
+                                                          Radius.circular(3),
+                                                      topRight:
+                                                          Radius.circular(3),
                                                     ),
+                                                  ),
+                                                  child: Text(
+                                                    '${frameIndex + 1}',
+                                                    textAlign: TextAlign.center,
+                                                    style: const TextStyle(
+                                                      fontSize: 12,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      color: Colors.white,
+                                                    ),
+                                                  ),
+                                                ),
+                                              );
+                                            }),
+                                          ),
+                                        ),
+                                        // Total score header
+                                        Container(
+                                          width: totColumnWidth,
+                                          padding: const EdgeInsets.symmetric(
+                                              vertical: 2),
+                                          decoration: const BoxDecoration(
+                                            color: AppColors.ringPrimary,
+                                            borderRadius: BorderRadius.only(
+                                              topLeft: Radius.circular(3),
+                                              topRight: Radius.circular(3),
+                                            ),
+                                          ),
+                                          child: const Text(
+                                            'T',
+                                            textAlign: TextAlign.center,
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    );
+
+                                    // Create player rows with name and frames
+                                    final playerRows = Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: List.generate(
+                                          (game['players'] as List).length,
+                                          (playerIndex) {
+                                        final player = (game['players']
+                                            as List)[playerIndex];
+                                        final playerName =
+                                            player['name'] as String;
+                                        final frames = player['frames'] as List;
+                                        final playerScore =
+                                            calculateBowlingScore(frames);
+
+                                        // Display shortened name if too long
+                                        final displayName = playerName.length >
+                                                5
+                                            ? '${playerName.substring(0, 4)}.'
+                                            : playerName;
+
+                                        return Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                              vertical:
+                                                  1.0), // Minimal vertical padding
+                                          child: Row(
+                                            children: [
+                                              // Player name column
+                                              SizedBox(
+                                                width: nameColumnWidth,
+                                                child: Text(
+                                                  displayName,
+                                                  style: const TextStyle(
+                                                    fontSize: 13,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: Colors.white,
+                                                  ),
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
+                                              ),
+
+                                              // Player frames
+                                              SizedBox(
+                                                width: framesWidth,
+                                                child: Row(
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment
+                                                          .spaceBetween,
+                                                  children: List.generate(10,
+                                                      (frameIndex) {
+                                                    // Get the frame data
+                                                    List<dynamic> frame =
+                                                        frames.length >
+                                                                frameIndex
+                                                            ? frames[frameIndex]
+                                                            : [];
+
+                                                    // For the 10th frame which may have 3 throws
+                                                    bool isTenthFrame =
+                                                        frameIndex == 9;
+                                                    bool isStrike =
+                                                        frame.isNotEmpty &&
+                                                            frame[0] == 'X';
+                                                    bool hasThirdThrow =
+                                                        isTenthFrame &&
+                                                            frame.length > 2;
+
+                                                    return SizedBox(
+                                                      width: frameWidth,
+                                                      child: SizedBox(
+                                                        height:
+                                                            frameHeight, // Use calculated height
+                                                        child: Container(
+                                                          margin: const EdgeInsets
+                                                              .all(
+                                                              0.5), // Very small margin
+                                                          decoration:
+                                                              BoxDecoration(
+                                                            color: Colors
+                                                                .transparent,
+                                                            borderRadius:
+                                                                BorderRadius
+                                                                    .circular(
+                                                                        2), // Smaller radius
+                                                          ),
+                                                          child: Stack(
+                                                            children: [
+                                                              // First throw - centered in the box (lower z-index)
+                                                              Positioned.fill(
+                                                                child: Center(
+                                                                  child: Text(
+                                                                    frame.isNotEmpty
+                                                                        ? frame[
+                                                                            0]
+                                                                        : '',
+                                                                    style:
+                                                                        TextStyle(
+                                                                      fontSize: (frame.isNotEmpty &&
+                                                                              frame[0] == 'X')
+                                                                          ? 18
+                                                                          : (frame.length > 1 && !isStrike)
+                                                                              ? 16
+                                                                              : 20,
+                                                                      fontWeight:
+                                                                          FontWeight
+                                                                              .bold,
+                                                                      color: Colors
+                                                                          .white,
+                                                                    ),
+                                                                  ),
+                                                                ),
+                                                              ),
+
+                                                              // Second throw - top right corner (higher z-index)
+                                                              if ((frame.length >
+                                                                          1 &&
+                                                                      !isStrike) ||
+                                                                  (isTenthFrame &&
+                                                                      frame.length >
+                                                                          1))
+                                                                Positioned(
+                                                                  top: 1,
+                                                                  right: 1,
+                                                                  child:
+                                                                      Container(
+                                                                    width: frameWidth *
+                                                                        0.3, // Slightly smaller
+                                                                    height: frameWidth *
+                                                                        0.3, // Slightly smaller
+                                                                    decoration:
+                                                                        BoxDecoration(
+                                                                      color: Colors
+                                                                          .transparent, // Transparent background
+                                                                      borderRadius:
+                                                                          BorderRadius.circular(
+                                                                              2),
+                                                                    ),
+                                                                    child:
+                                                                        Center(
+                                                                      child:
+                                                                          Text(
+                                                                        frame[
+                                                                            1],
+                                                                        style:
+                                                                            const TextStyle(
+                                                                          fontSize:
+                                                                              7, // Even smaller font size
+                                                                          fontWeight:
+                                                                              FontWeight.bold,
+                                                                          color:
+                                                                              Colors.white,
+                                                                        ),
+                                                                      ),
+                                                                    ),
+                                                                  ),
+                                                                ),
+
+                                                              // Third throw (10th frame only) (higher z-index)
+                                                              if (hasThirdThrow)
+                                                                Positioned(
+                                                                  bottom: 1,
+                                                                  right: 1,
+                                                                  child:
+                                                                      Container(
+                                                                    width: frameWidth *
+                                                                        0.3, // Slightly smaller
+                                                                    height: frameWidth *
+                                                                        0.3, // Slightly smaller
+                                                                    decoration:
+                                                                        BoxDecoration(
+                                                                      color: Colors
+                                                                          .transparent, // Transparent background
+                                                                      borderRadius:
+                                                                          BorderRadius.circular(
+                                                                              2),
+                                                                    ),
+                                                                    child:
+                                                                        Center(
+                                                                      child:
+                                                                          Text(
+                                                                        frame[
+                                                                            2],
+                                                                        style:
+                                                                            const TextStyle(
+                                                                          fontSize:
+                                                                              7, // Even smaller font size
+                                                                          fontWeight:
+                                                                              FontWeight.bold,
+                                                                          color:
+                                                                              Colors.white,
+                                                                        ),
+                                                                      ),
+                                                                    ),
+                                                                  ),
+                                                                ),
+                                                            ],
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    );
+                                                  }),
+                                                ),
+                                              ),
+
+                                              // Score after frames
+                                              Container(
+                                                width: totColumnWidth,
+                                                height:
+                                                    frameHeight, // Match height of frame
+                                                padding: EdgeInsets.zero,
+                                                alignment: Alignment
+                                                    .center, // Center alignment
+                                                decoration: BoxDecoration(
+                                                  // Remove the background color
+                                                  borderRadius:
+                                                      BorderRadius.zero,
+                                                ),
+                                                child: Center(
+                                                  // Explicitly center the content
+                                                  child: FittedBox(
+                                                    fit: BoxFit.scaleDown,
                                                     child: Text(
-                                                      '${frameIndex + 1}',
-                                                      textAlign:
-                                                          TextAlign.center,
+                                                      '$playerScore',
                                                       style: const TextStyle(
-                                                        fontSize:
-                                                            12, // Increased size
-                                                        fontWeight: FontWeight
-                                                            .bold, // Added bold
+                                                        fontSize: 12,
+                                                        fontWeight:
+                                                            FontWeight.bold,
                                                         color: Colors.white,
                                                       ),
                                                     ),
                                                   ),
-
-                                                  // Grid of throws for this frame
-                                                  Padding(
-                                                    padding: const EdgeInsets
-                                                        .symmetric(
-                                                        vertical: 4.0),
-                                                    child: AspectRatio(
-                                                      aspectRatio:
-                                                          1.0, // Ensuring a square box (1:1 ratio)
-                                                      child: Container(
-                                                        decoration:
-                                                            BoxDecoration(
-                                                          color: Colors
-                                                              .transparent, // Changed back to transparent
-                                                          borderRadius:
-                                                              BorderRadius
-                                                                  .circular(3),
-                                                        ),
-                                                        child: Stack(
-                                                          children: [
-                                                            // First throw - centered in the box
-                                                            Center(
-                                                              child: Text(
-                                                                frame.isNotEmpty
-                                                                    ? frame[0]
-                                                                    : '',
-                                                                style:
-                                                                    TextStyle(
-                                                                  // Smaller size for X, normal for other symbols
-                                                                  fontSize: (frame
-                                                                              .isNotEmpty &&
-                                                                          frame[0] ==
-                                                                              'X')
-                                                                      ? 18
-                                                                      : (frame.length > 1 &&
-                                                                              !isStrike)
-                                                                          ? 16
-                                                                          : 20,
-                                                                  fontWeight:
-                                                                      FontWeight
-                                                                          .bold,
-                                                                  color: Colors
-                                                                      .white, // Changed to white
-                                                                ),
-                                                              ),
-                                                            ),
-
-                                                            // Second throw - top right corner, improved visibility
-                                                            if ((frame.length >
-                                                                        1 &&
-                                                                    !isStrike) ||
-                                                                (isTenthFrame &&
-                                                                    frame.length >
-                                                                        1))
-                                                              Align(
-                                                                alignment:
-                                                                    Alignment
-                                                                        .topRight,
-                                                                child:
-                                                                    Container(
-                                                                  width:
-                                                                      frameWidth *
-                                                                          0.4,
-                                                                  height:
-                                                                      frameWidth *
-                                                                          0.4,
-                                                                  margin:
-                                                                      const EdgeInsets
-                                                                          .only(
-                                                                          top:
-                                                                              1,
-                                                                          right:
-                                                                              1),
-                                                                  child: Center(
-                                                                    child: Text(
-                                                                      frame[1],
-                                                                      style:
-                                                                          const TextStyle(
-                                                                        fontSize:
-                                                                            11,
-                                                                        fontWeight:
-                                                                            FontWeight.bold,
-                                                                        color: Colors
-                                                                            .white,
-                                                                      ),
-                                                                    ),
-                                                                  ),
-                                                                ),
-                                                              ),
-
-                                                            // Third throw (10th frame only)
-                                                            if (hasThirdThrow)
-                                                              Align(
-                                                                alignment: Alignment
-                                                                    .bottomRight,
-                                                                child:
-                                                                    Container(
-                                                                  width:
-                                                                      frameWidth *
-                                                                          0.4,
-                                                                  height:
-                                                                      frameWidth *
-                                                                          0.4,
-                                                                  margin:
-                                                                      const EdgeInsets
-                                                                          .only(
-                                                                          bottom:
-                                                                              1,
-                                                                          right:
-                                                                              1),
-                                                                  child: Center(
-                                                                    child: Text(
-                                                                      frame[2],
-                                                                      style:
-                                                                          const TextStyle(
-                                                                        fontSize:
-                                                                            11,
-                                                                        fontWeight:
-                                                                            FontWeight.bold,
-                                                                        color: Colors
-                                                                            .white,
-                                                                      ),
-                                                                    ),
-                                                                  ),
-                                                                ),
-                                                              ),
-                                                          ],
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ],
+                                                ),
                                               ),
-                                            );
-                                          }),
-                                        ),
-                                        const Spacer(), // Push the date & score to the bottom
+                                            ],
+                                          ),
+                                        );
+                                      }),
+                                    );
+
+                                    // Combine the frame headers and player rows
+                                    return Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        frameHeaders,
+                                        const SizedBox(
+                                            height: 4), // Reduced spacing
+                                        playerRows,
                                       ],
                                     );
                                   },
                                 ),
                               ),
                             ),
-                          ),
-
-                          const SizedBox(height: 16),
-
-                          // Game date and total score - moved to bottom
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                game['date'].toString(),
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                ),
-                              ),
-                              Text(
-                                'Total: $totalScore', // Using calculated score
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ],
                           ),
                         ],
                       ),
