@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:magic_strike_flutter/constants/app_colors.dart';
-import 'package:magic_strike_flutter/screens/screen_add_previous_games.dart';
 import 'package:magic_strike_flutter/screens/screen_start_game.dart';
 import 'package:magic_strike_flutter/screens/screen_live_tracking.dart';
 
@@ -48,44 +47,16 @@ class PlayScreen extends StatelessWidget {
                 ),
               ),
 
-              // Remaining space with vertically centered buttons
-              Expanded(
+              const SizedBox(height: 60), // Added more space after subtitle
+
+              // Buttons with vertical alignment and top padding instead of center
+              Padding(
+                padding: const EdgeInsets.only(top: 20.0),
                 child: Center(
                   child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      // Add previous games button with scale animation
-                      TapScaleButton(
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) =>
-                                  const AddPreviousGamesScreen(),
-                            ),
-                          );
-                        },
-                        child: Container(
-                          width: buttonWidth,
-                          padding: const EdgeInsets.symmetric(vertical: 16.0),
-                          decoration: BoxDecoration(
-                            color: AppColors.ringBackground3rd,
-                            borderRadius: BorderRadius.circular(12.0),
-                          ),
-                          child: const Center(
-                            child: Text(
-                              "Add previous games",
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-
                       // Start a game button with scale animation
                       TapScaleButton(
                         onPressed: () {
@@ -150,6 +121,9 @@ class PlayScreen extends StatelessWidget {
                   ),
                 ),
               ),
+
+              // Add some empty space at the bottom
+              const Spacer(),
             ],
           ),
         ),

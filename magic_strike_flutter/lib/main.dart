@@ -72,14 +72,8 @@ class HomePageState extends State<HomePage> {
         centerTitle: true,
         toolbarHeight: 142,
       );
-    } else if (_selectedIndex == 4) {
-      // For More screen, return an app bar without logo
-      return AppBar(
-        backgroundColor: Colors.white,
-        toolbarHeight: 142,
-      );
     } else {
-      // This is now never reached, but we'll keep it for future flexibility
+      // No AppBar for the More screen (index 4)
       return null;
     }
   }

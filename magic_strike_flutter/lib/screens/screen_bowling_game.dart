@@ -909,7 +909,7 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
             border: Border.all(
               color: alreadyKnocked || _pinStates[index]
                   ? Colors.grey[500]!
-                  : AppColors.ringPrimary.withOpacity(0.7),
+                  : AppColors.ringBackground3rd,
               width: 1.0,
             ),
             boxShadow: _pinStates[index] || alreadyKnocked

@@ -354,7 +354,7 @@ class HomeScreen extends StatelessWidget {
               child: Text(
                 'Latest games',
                 style: const TextStyle(
-                  fontSize: 24,
+                  fontSize: 32,
                   fontWeight: FontWeight.bold,
                   color: Colors.black,
                 ),
@@ -379,8 +379,12 @@ class HomeScreen extends StatelessWidget {
                     // Set height based on player count plus space for header
                     height: 90.0 + ((game['players'] as List).length * 35.0),
                     decoration: BoxDecoration(
-                      color: AppColors.ringBackground3rd,
+                      color: Colors.white,
                       borderRadius: BorderRadius.circular(12.0),
+                      border: Border.all(
+                        color: AppColors.ringPrimary,
+                        width: 1.0,
+                      ),
                     ),
                     child: Padding(
                       padding: const EdgeInsets.all(12.0), // Reduce padding
@@ -395,8 +399,8 @@ class HomeScreen extends StatelessWidget {
                               game['date'].toString(),
                               style: const TextStyle(
                                 fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
+                                fontWeight: FontWeight.normal,
+                                color: Colors.black,
                               ),
                             ),
                           ),
@@ -405,7 +409,7 @@ class HomeScreen extends StatelessWidget {
                           Expanded(
                             child: Container(
                               decoration: BoxDecoration(
-                                color: AppColors.ringBackground3rd,
+                                color: Colors.white,
                                 borderRadius: BorderRadius.circular(8.0),
                               ),
                               child: Padding(
@@ -464,7 +468,7 @@ class HomeScreen extends StatelessWidget {
                                                     style: const TextStyle(
                                                       fontSize: 12,
                                                       fontWeight:
-                                                          FontWeight.bold,
+                                                          FontWeight.w500,
                                                       color: Colors.white,
                                                     ),
                                                   ),
@@ -490,7 +494,7 @@ class HomeScreen extends StatelessWidget {
                                             textAlign: TextAlign.center,
                                             style: TextStyle(
                                               fontSize: 12,
-                                              fontWeight: FontWeight.bold,
+                                              fontWeight: FontWeight.w500,
                                               color: Colors.white,
                                             ),
                                           ),
@@ -533,8 +537,9 @@ class HomeScreen extends StatelessWidget {
                                                   displayName,
                                                   style: const TextStyle(
                                                     fontSize: 13,
-                                                    fontWeight: FontWeight.bold,
-                                                    color: Colors.white,
+                                                    fontWeight:
+                                                        FontWeight.normal,
+                                                    color: Colors.black,
                                                   ),
                                                   maxLines: 1,
                                                   overflow:
@@ -579,12 +584,16 @@ class HomeScreen extends StatelessWidget {
                                                               0.5), // Very small margin
                                                           decoration:
                                                               BoxDecoration(
-                                                            color: Colors
-                                                                .transparent,
+                                                            color: Colors.white,
                                                             borderRadius:
                                                                 BorderRadius
                                                                     .circular(
                                                                         2), // Smaller radius
+                                                            border: Border.all(
+                                                              color: AppColors
+                                                                  .ringPrimary,
+                                                              width: 0.5,
+                                                            ),
                                                           ),
                                                           child: Stack(
                                                             children: [
@@ -600,15 +609,15 @@ class HomeScreen extends StatelessWidget {
                                                                         TextStyle(
                                                                       fontSize: (frame.isNotEmpty &&
                                                                               frame[0] == 'X')
-                                                                          ? 18
+                                                                          ? 16
                                                                           : (frame.length > 1 && !isStrike)
                                                                               ? 16
-                                                                              : 20,
+                                                                              : 16,
                                                                       fontWeight:
                                                                           FontWeight
-                                                                              .bold,
+                                                                              .normal,
                                                                       color: Colors
-                                                                          .white,
+                                                                          .black,
                                                                     ),
                                                                   ),
                                                                 ),
@@ -647,11 +656,11 @@ class HomeScreen extends StatelessWidget {
                                                                         style:
                                                                             const TextStyle(
                                                                           fontSize:
-                                                                              7, // Even smaller font size
+                                                                              7, // Small font size
                                                                           fontWeight:
-                                                                              FontWeight.bold,
+                                                                              FontWeight.normal,
                                                                           color:
-                                                                              Colors.white,
+                                                                              Colors.black,
                                                                         ),
                                                                       ),
                                                                     ),
@@ -686,11 +695,11 @@ class HomeScreen extends StatelessWidget {
                                                                         style:
                                                                             const TextStyle(
                                                                           fontSize:
-                                                                              7, // Even smaller font size
+                                                                              7, // Small font size
                                                                           fontWeight:
-                                                                              FontWeight.bold,
+                                                                              FontWeight.normal,
                                                                           color:
-                                                                              Colors.white,
+                                                                              Colors.black,
                                                                         ),
                                                                       ),
                                                                     ),
@@ -727,8 +736,8 @@ class HomeScreen extends StatelessWidget {
                                                       style: const TextStyle(
                                                         fontSize: 12,
                                                         fontWeight:
-                                                            FontWeight.bold,
-                                                        color: Colors.white,
+                                                            FontWeight.normal,
+                                                        color: Colors.black,
                                                       ),
                                                     ),
                                                   ),
