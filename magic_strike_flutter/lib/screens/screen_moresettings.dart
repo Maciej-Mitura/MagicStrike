@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:magic_strike_flutter/constants/app_colors.dart';
 import 'package:flutter/services.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'screen_auth_choice.dart';
 
 class MoreSettingsScreen extends StatefulWidget {
   const MoreSettingsScreen({super.key});
@@ -46,6 +48,8 @@ class _MoreSettingsScreenState extends State<MoreSettingsScreen>
 
   void _saveSettings() {
     // Show a snackbar to indicate settings were saved
+    if (!mounted) return;
+
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Settings saved successfully'),
@@ -125,35 +129,156 @@ class _MoreSettingsScreenState extends State<MoreSettingsScreen>
   }
 
   void _logOut() {
-    // Show confirmation dialog
+    if (!mounted) return;
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Log Out'),
-        content: const Text('Are you sure you want to log out?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              // Here you would implement the actual logout logic
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Logged out successfully'),
-                  duration: Duration(seconds: 2),
-                ),
-              );
-            },
-            style: TextButton.styleFrom(
-              foregroundColor: Colors.red,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('Log Out'),
+          content: const Text('Are you sure you want to log out?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
             ),
-            child: const Text('Log Out'),
-          ),
-        ],
-      ),
+            TextButton(
+              onPressed: () async {
+                // Close the dialog
+                Navigator.pop(dialogContext);
+
+                try {
+                  // Sign out from Firebase
+                  await FirebaseAuth.instance.signOut();
+
+                  // Navigate to auth choice screen and remove all previous routes
+                  if (mounted) {
+                    Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => const AuthChoiceScreen()),
+                      (route) => false,
+                    );
+                  }
+                } catch (e) {
+                  // Show error if logout fails
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Logout failed: $e'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                }
+              },
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.white,
+                backgroundColor: AppColors.ringPrimary,
+              ),
+              child: const Text('Log Out'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // Password confirmation dialog for account deletion
+  void _showDeleteAccountDialog() {
+    if (!mounted) return;
+
+    final TextEditingController passwordController = TextEditingController();
+    bool isPasswordIncorrect = false;
+
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return StatefulBuilder(builder: (builderContext, setState) {
+          return AlertDialog(
+            title: const Text('Delete Account'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'This action cannot be undone. Please enter your password to confirm.',
+                  style: TextStyle(fontSize: 14),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: passwordController,
+                  obscureText: true,
+                  decoration: InputDecoration(
+                    hintText: 'Enter your password',
+                    errorText:
+                        isPasswordIncorrect ? 'Incorrect password' : null,
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () {
+                  // Check if password is correct (dummy check for now)
+                  // In a real app, this would verify with the backend
+                  if (passwordController.text == 'password') {
+                    Navigator.of(dialogContext).pop();
+
+                    // Show success message
+                    if (mounted) {
+                      showDialog(
+                        context: context,
+                        barrierDismissible: false,
+                        builder: (BuildContext successContext) {
+                          return AlertDialog(
+                            title: const Text('Account Deleted'),
+                            content: const Text(
+                                'Your account has been deleted successfully.'),
+                            actions: [
+                              TextButton(
+                                onPressed: () {
+                                  Navigator.of(successContext).pop();
+                                  // Navigate to auth choice screen
+                                  if (mounted) {
+                                    Navigator.pushAndRemoveUntil(
+                                      context,
+                                      MaterialPageRoute(
+                                          builder: (context) =>
+                                              const AuthChoiceScreen()),
+                                      (route) => false,
+                                    );
+                                  }
+                                },
+                                child: const Text('OK'),
+                              ),
+                            ],
+                          );
+                        },
+                      );
+                    }
+                  } else {
+                    // Show error for incorrect password
+                    setState(() {
+                      isPasswordIncorrect = true;
+                    });
+                  }
+                },
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  backgroundColor: AppColors.ringPrimary,
+                ),
+                child: const Text('Delete'),
+              ),
+            ],
+          );
+        });
+      },
     );
   }
 
@@ -363,7 +488,7 @@ class _MoreSettingsScreenState extends State<MoreSettingsScreen>
             child: ElevatedButton(
               onPressed: _logOut,
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red[400],
+                backgroundColor: AppColors.ringPrimary,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(
@@ -397,24 +522,32 @@ class _MoreSettingsScreenState extends State<MoreSettingsScreen>
           _buildInfoBox([
             _buildActionRow('How-to on YouTube', onTap: () {
               // Would open YouTube tutorials
+              if (!mounted) return;
+
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('Opening YouTube tutorials...')),
               );
             }),
             _buildActionRow('Terms of Use', onTap: () {
               // Would open terms of use
+              if (!mounted) return;
+
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('Opening Terms of Use...')),
               );
             }),
             _buildActionRow('Privacy Policy', onTap: () {
               // Would open privacy policy
+              if (!mounted) return;
+
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('Opening Privacy Policy...')),
               );
             }),
             _buildActionRow('Contact Us', onTap: () {
               // Would open contact form or email
+              if (!mounted) return;
+
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('Opening Contact Form...')),
               );
@@ -451,108 +584,18 @@ class _MoreSettingsScreenState extends State<MoreSettingsScreen>
               'Delete Account',
               style: TextStyle(
                 fontSize: 16,
-                color: Colors.red[700],
+                color: AppColors.ringPrimary,
                 fontWeight: FontWeight.w500,
               ),
             ),
             Icon(
               Icons.chevron_right,
-              color: Colors.red[300],
+              color: AppColors.ringPrimary,
               size: 20,
             ),
           ],
         ),
       ),
-    );
-  }
-
-  // Password confirmation dialog for account deletion
-  void _showDeleteAccountDialog() {
-    final TextEditingController passwordController = TextEditingController();
-    bool isPasswordIncorrect = false;
-
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return StatefulBuilder(builder: (context, setState) {
-          return AlertDialog(
-            title: const Text('Delete Account'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'This action cannot be undone. Please enter your password to confirm.',
-                  style: TextStyle(fontSize: 14),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: passwordController,
-                  obscureText: true,
-                  decoration: InputDecoration(
-                    hintText: 'Enter your password',
-                    errorText:
-                        isPasswordIncorrect ? 'Incorrect password' : null,
-                    border: const OutlineInputBorder(),
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Cancel'),
-              ),
-              TextButton(
-                onPressed: () {
-                  // Check if password is correct (dummy check for now)
-                  // In a real app, this would verify with the backend
-                  if (passwordController.text == 'password') {
-                    Navigator.of(context).pop();
-
-                    // Show success message
-                    showDialog(
-                      context: context,
-                      barrierDismissible: false,
-                      builder: (BuildContext context) {
-                        return AlertDialog(
-                          title: const Text('Account Deleted'),
-                          content: const Text(
-                              'Your account has been deleted successfully.'),
-                          actions: [
-                            TextButton(
-                              onPressed: () {
-                                Navigator.of(context).pop();
-                                // Navigate to login screen or similar
-                                // In this case, just show a snackbar
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Logged out successfully'),
-                                  ),
-                                );
-                              },
-                              child: const Text('OK'),
-                            ),
-                          ],
-                        );
-                      },
-                    );
-                  } else {
-                    // Show error for incorrect password
-                    setState(() {
-                      isPasswordIncorrect = true;
-                    });
-                  }
-                },
-                style: TextButton.styleFrom(
-                  foregroundColor: Colors.red,
-                ),
-                child: const Text('Delete'),
-              ),
-            ],
-          );
-        });
-      },
     );
   }
 

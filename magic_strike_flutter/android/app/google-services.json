@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "574838944172",
+    "project_id": "deringapp-67494",
+    "storage_bucket": "deringapp-67494.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:574838944172:android:d7afc880ad1d6186c5ca09",
+        "android_client_info": {
+          "package_name": "com.example.magic_strike_flutter"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCreKGDKKxck3RWU3ujYQpq5nsHA6rLGeo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

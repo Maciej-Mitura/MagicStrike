@@ -1,9 +1,40 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'screen_login.dart';
 import 'screen_register.dart';
+import '../main.dart';
 
-class AuthChoiceScreen extends StatelessWidget {
+class AuthChoiceScreen extends StatefulWidget {
   const AuthChoiceScreen({super.key});
+
+  @override
+  State<AuthChoiceScreen> createState() => _AuthChoiceScreenState();
+}
+
+class _AuthChoiceScreenState extends State<AuthChoiceScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Check for existing user on initialization
+    _checkCurrentUser();
+  }
+
+  // Check if a user is already signed in
+  Future<void> _checkCurrentUser() async {
+    User? currentUser = FirebaseAuth.instance.currentUser;
+
+    // If user is already logged in, navigate to HomePage
+    if (currentUser != null) {
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => HomePage(key: homePageKey),
+          ),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

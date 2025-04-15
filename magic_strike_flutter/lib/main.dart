@@ -6,12 +6,20 @@ import 'screens/screen_gameshistory.dart';
 import 'screens/screen_moresettings.dart';
 import 'screens/screen_stats.dart';
 import 'screens/screen_play.dart';
-import 'screens/screen_auth_choice.dart';
+import 'widgets/auth_gate.dart'; // Import AuthGate
+
+//Firebase imports
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart'; // if using FlutterFire CLI
 
 // Create a global key to access the HomePage state
 final GlobalKey<HomePageState> homePageKey = GlobalKey<HomePageState>();
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   runApp(const MyApp());
 }
 
@@ -22,7 +30,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false, // Disable the debug banner
-      home: const AuthChoiceScreen(), // Start with the auth choice screen
+      home: const AuthGate(), // Use AuthGate instead of AuthChoiceScreen
     );
   }
 }
@@ -83,9 +91,13 @@ class HomePageState extends State<HomePage> {
     return Scaffold(
       appBar: _buildAppBar(),
       body: ConnectivityWrapper(
-        child: IndexedStack(
-          index: _selectedIndex,
-          children: _screens,
+        child: SafeArea(
+          bottom:
+              false, // Don't add bottom padding as it would double with the navbar
+          child: IndexedStack(
+            index: _selectedIndex,
+            children: _screens,
+          ),
         ),
       ),
       bottomNavigationBar: FooterNav(
