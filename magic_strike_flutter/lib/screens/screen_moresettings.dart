@@ -147,10 +147,10 @@ class _MoreSettingsScreenState extends State<MoreSettingsScreen>
                 ),
               );
             },
-            child: const Text('Log Out'),
             style: TextButton.styleFrom(
               foregroundColor: Colors.red,
             ),
+            child: const Text('Log Out'),
           ),
         ],
       ),
@@ -626,39 +626,6 @@ class _MoreSettingsScreenState extends State<MoreSettingsScreen>
         ),
       ),
     );
-  }
-
-  Widget _buildSwitchRow(String label, bool initialValue) {
-    // Create a local state for the switch
-    bool switchValue = initialValue;
-
-    return StatefulBuilder(builder: (context, setState) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey[700],
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            Switch(
-              value: switchValue,
-              onChanged: (value) {
-                setState(() {
-                  switchValue = value;
-                });
-              },
-              activeColor: AppColors.ringPrimary,
-            ),
-          ],
-        ),
-      );
-    });
   }
 
   Widget _buildActionRow(String label, {required Function() onTap}) {
