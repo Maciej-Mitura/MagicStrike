@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'screen_login.dart';
+
+import '../main.dart';
+
+import '../services/user_service.dart'; // Import UserService
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -81,7 +84,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     return null;
   }
 
-  // Register user with Firebase
+  // Register with Firebase
   Future<void> _registerUser() async {
     // Clear previous errors
     setState(() {
@@ -102,18 +105,34 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     try {
       // Create user with email and password
-      final UserCredential userCredential =
+      final userCredential =
           await FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
 
-      // Update the user's display name
-      await userCredential.user!
-          .updateDisplayName(_usernameController.text.trim());
+      // Set user display name
+      await userCredential.user
+          ?.updateDisplayName(_usernameController.text.trim());
 
-      // Show success dialog
-      _showSuccessDialog();
+      // Initialize user data
+      try {
+        await UserService().initializeUserData();
+      } catch (userInitError) {
+        print('Error initializing user data: $userInitError');
+        // Continue with registration even if user data initialization fails
+      }
+
+      // If successful, navigate to home page
+      if (!mounted) return;
+
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(
+          builder: (context) => HomePage(key: homePageKey),
+        ),
+        (route) => false, // Remove all previous routes
+      );
     } on FirebaseAuthException catch (e) {
       setState(() {
         _isLoading = false;
@@ -133,38 +152,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
         _generalError = 'An unexpected error occurred: $e';
       });
     }
-  }
-
-  // Show success dialog
-  void _showSuccessDialog() {
-    if (!mounted) return;
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext dialogContext) {
-        return AlertDialog(
-          title: const Text('Success'),
-          content: const Text('Account created successfully. Please log in.'),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop(); // Close dialog
-                // Navigate to login screen
-                if (mounted) {
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(
-                        builder: (context) => const LoginScreen()),
-                  );
-                }
-              },
-              child: const Text('OK'),
-            ),
-          ],
-        );
-      },
-    );
   }
 
   @override

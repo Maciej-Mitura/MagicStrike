@@ -3,6 +3,7 @@ import 'package:magic_strike_flutter/constants/app_colors.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'screen_auth_choice.dart';
+import '../services/user_service.dart';
 
 class MoreSettingsScreen extends StatefulWidget {
   const MoreSettingsScreen({super.key});
@@ -128,60 +129,62 @@ class _MoreSettingsScreenState extends State<MoreSettingsScreen>
     );
   }
 
-  void _logOut() {
-    if (!mounted) return;
+  // Handle logout
+  Future<void> _handleLogout() async {
+    // Show dialog to confirm logout
+    final shouldLogout = await showDialog<bool>(
+          context: context,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              title: const Text('Log Out'),
+              content: const Text('Are you sure you want to log out?'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    backgroundColor: AppColors.ringPrimary,
+                  ),
+                  child: const Text('Log Out'),
+                ),
+              ],
+            );
+          },
+        ) ??
+        false;
 
-    showDialog(
-      context: context,
-      builder: (BuildContext dialogContext) {
-        return AlertDialog(
-          title: const Text('Log Out'),
-          content: const Text('Are you sure you want to log out?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancel'),
+    if (shouldLogout) {
+      try {
+        // Clear saved user data
+        UserService().clearUserData();
+
+        // Sign out from Firebase Auth
+        await FirebaseAuth.instance.signOut();
+
+        // Navigate to auth screen
+        if (mounted) {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (context) => const AuthChoiceScreen()),
+            (route) => false,
+          );
+        }
+      } catch (e) {
+        // Handle logout errors
+        print('Error during logout: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Logout failed: $e'),
+              backgroundColor: Colors.red,
             ),
-            TextButton(
-              onPressed: () async {
-                // Close the dialog
-                Navigator.pop(dialogContext);
-
-                try {
-                  // Sign out from Firebase
-                  await FirebaseAuth.instance.signOut();
-
-                  // Navigate to auth choice screen and remove all previous routes
-                  if (mounted) {
-                    Navigator.pushAndRemoveUntil(
-                      context,
-                      MaterialPageRoute(
-                          builder: (context) => const AuthChoiceScreen()),
-                      (route) => false,
-                    );
-                  }
-                } catch (e) {
-                  // Show error if logout fails
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Logout failed: $e'),
-                        backgroundColor: Colors.red,
-                      ),
-                    );
-                  }
-                }
-              },
-              style: TextButton.styleFrom(
-                foregroundColor: Colors.white,
-                backgroundColor: AppColors.ringPrimary,
-              ),
-              child: const Text('Log Out'),
-            ),
-          ],
-        );
-      },
-    );
+          );
+        }
+      }
+    }
   }
 
   // Password confirmation dialog for account deletion
@@ -486,7 +489,7 @@ class _MoreSettingsScreenState extends State<MoreSettingsScreen>
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: _logOut,
+              onPressed: _handleLogout,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.ringPrimary,
                 foregroundColor: Colors.white,

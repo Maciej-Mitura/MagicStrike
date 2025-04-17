@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../main.dart'; // Import the main.dart to access the HomePage
+import '../services/user_service.dart'; // Import UserService
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -76,6 +77,14 @@ class _LoginScreenState extends State<LoginScreen> {
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
+
+      // Initialize user data after successful login
+      try {
+        await UserService().initializeUserData();
+      } catch (userInitError) {
+        print('Error initializing user data: $userInitError');
+        // Continue with login even if user data initialization fails
+      }
 
       // If successful, navigate to home page
       if (!mounted) return;

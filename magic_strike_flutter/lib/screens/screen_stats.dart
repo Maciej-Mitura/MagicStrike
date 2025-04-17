@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:magic_strike_flutter/constants/app_colors.dart';
+import 'package:magic_strike_flutter/services/stats_service.dart';
 
 class StatsScreen extends StatefulWidget {
   const StatsScreen({super.key});
@@ -14,18 +15,22 @@ class _StatsScreenState extends State<StatsScreen>
   late AnimationController _animationController;
   late Animation<double> _animation;
 
+  // Service for retrieving stats
+  final StatsService _statsService = StatsService();
+
+  // State variables for stats
+  bool _isLoading = true;
+  bool _hasError = false;
+  int _averageScore = 0;
+  int _bestScore = 0;
+  int _gamesPlayed = 0;
+  int _cleanPercentage = 0;
+  List<int> _recentScores = [];
+
   // Map to store the current stats values
   Map<String, double> _currentFirstBallStats = {
     'strikes': 0,
     'leaves': 0,
-    'splits': 0,
-  };
-
-  // Default values for when no backend data is available
-  final Map<String, double> _defaultFirstBallStats = {
-    'strikes': 50.0,
-    'leaves': 35.0,
-    'splits': 15.0,
   };
 
   @override
@@ -49,56 +54,60 @@ class _StatsScreenState extends State<StatsScreen>
   }
 
   // Method to initialize data and trigger animations
-  void _initializeData() {
-    // Fetch data from backend or use defaults
-    final firstBallData = fetchFirstBallStats();
-    updateFirstBallStats(firstBallData);
-  }
+  Future<void> _initializeData() async {
+    if (!mounted) return;
 
-  // Method to fetch first ball stats - would connect to backend in real app
-  Map<String, double> fetchFirstBallStats() {
-    // This is where you would connect to your backend
-    // For example:
-    // try {
-    //   final userDoc = await FirebaseFirestore.instance
-    //     .collection('users')
-    //     .doc(currentUserId)
-    //     .get();
-    //
-    //   if (userDoc.exists) {
-    //     final data = userDoc.data();
-    //     return {
-    //       'strikes': calculateStrikePercentage(data),
-    //       'leaves': calculateLeavesPercentage(data),
-    //       'splits': calculateSplitsPercentage(data),
-    //     };
-    //   }
-    // } catch (e) {
-    //   print('Error fetching data: $e');
-    // }
-
-    // If backend data retrieval fails or is not implemented yet,
-    // return the default values
-    return _defaultFirstBallStats;
-  }
-
-  // Method to update first ball stats with new data from backend
-  void updateFirstBallStats(Map<String, double> newStats) {
     setState(() {
-      _currentFirstBallStats = newStats;
+      _isLoading = true;
+      _hasError = false;
     });
 
-    // Reset and restart the animation
-    _animationController.reset();
-    _animationController.forward();
+    try {
+      // Fetch all stats in parallel for better performance
+      final averageScoreFuture = _statsService.calculateAverageScore();
+      final bestScoreFuture = _statsService.getBestScore();
+      final gamesPlayedFuture = _statsService.getGamesPlayed();
+      final recentScoresFuture = _statsService.getRecentScores(10);
+      final firstBallStatsFuture = _statsService.getFirstBallStats();
+      final cleanPercentageFuture = _statsService.calculateCleanPercentage();
+
+      // Wait for all stats to be fetched
+      final averageScore = await averageScoreFuture;
+      final bestScore = await bestScoreFuture;
+      final gamesPlayed = await gamesPlayedFuture;
+      final recentScores = await recentScoresFuture;
+      final firstBallStats = await firstBallStatsFuture;
+      final cleanPercentage = await cleanPercentageFuture;
+
+      if (mounted) {
+        setState(() {
+          _averageScore = averageScore;
+          _bestScore = bestScore;
+          _gamesPlayed = gamesPlayed;
+          _cleanPercentage = cleanPercentage;
+          _recentScores = recentScores;
+          _currentFirstBallStats = firstBallStats;
+          _isLoading = false;
+        });
+
+        // Start animation after data is loaded
+        _animationController.reset();
+        _animationController.forward();
+      }
+    } catch (e) {
+      print('Error loading stats: $e');
+      if (mounted) {
+        setState(() {
+          _hasError = true;
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   // Method to handle the refresh button tap
-  void _refreshFirstBallStats() {
-    // This calls the fetchFirstBallStats method which will
-    // either return backend data or default values
-    final freshData = fetchFirstBallStats();
-    updateFirstBallStats(freshData);
+  Future<void> _refreshStats() async {
+    await _initializeData();
   }
 
   @override
@@ -109,207 +118,234 @@ class _StatsScreenState extends State<StatsScreen>
 
   @override
   Widget build(BuildContext context) {
-    // Placeholder stats data (to be replaced with backend data later)
+    // Stats data from the state
     final statsData = {
-      'average': 165,
-      'best': 245,
-      'cleanPercentage': 30,
-      'gamesPlayed': 28,
+      'average': _averageScore,
+      'best': _bestScore,
+      'cleanPercentage': _cleanPercentage,
+      'gamesPlayed': _gamesPlayed,
     };
 
-    // Placeholder game scores for the graph (last 10 games)
-    final List<int> gameScores = [
-      145,
-      237,
-      182,
-      92,
-      268,
-      153,
-      197,
-      120,
-      255,
-      178
-    ];
+    // Use recent scores or empty list if none available
+    final List<int> gameScores = _recentScores.isNotEmpty
+        ? _recentScores
+        : [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]; // Default empty scores
 
-    // Use the current stats values from the state
+    // First ball stats from state
     final firstBallStats = _currentFirstBallStats;
 
     return Scaffold(
       backgroundColor: Colors.white,
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(24.0, 16.0, 24.0, 24.0),
-        physics: const BouncingScrollPhysics(),
-        children: [
-          // Overview Section
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Overview',
-                style: TextStyle(
-                  fontSize: 32, // Increased to 32 as per Figma design
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black,
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // Horizontally scrollable stats boxes
-              SizedBox(
-                height: 120, // Fixed height for the stat boxes
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  physics: const BouncingScrollPhysics(),
-                  children: [
-                    // Average Score Box
-                    _buildStatBox(
-                      title: 'Avg',
-                      value: statsData['average'].toString(),
-                    ),
-
-                    // Best Score Box
-                    _buildStatBox(
-                      title: 'Best',
-                      value: statsData['best'].toString(),
-                    ),
-
-                    // Clean Game Percentage Box
-                    _buildStatBox(
-                      title: 'Clean%',
-                      value: '${statsData['cleanPercentage']}%',
-                    ),
-
-                    // Games Played Box
-                    _buildStatBox(
-                      title: 'Games',
-                      value: statsData['gamesPlayed'].toString(),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 48), // Increased gap between sections
-
-          // Score Graph Section
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Title row with Score and Last 10 games
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Score',
-                    style: TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black,
-                    ),
-                  ),
-                  const Text(
-                    'Last 10 games',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.grey,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              // Score Graph
-              Container(
-                height: 300, // Fixed height for the graph
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                      16.0, 20, 16.0, 40), // Reduced horizontal padding
-                  child: _buildScoreGraph(gameScores),
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 48), // Gap between sections
-
-          // First Ball Section
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Title row with First ball and Refresh button
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'First ball',
-                    style: TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black,
-                    ),
-                  ),
-                  GestureDetector(
-                    onTap: _refreshFirstBallStats,
-                    child: const Text(
-                      'Refresh',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
+      body: _isLoading
+          ? const Center(
+              child: CircularProgressIndicator(),
+            )
+          : _hasError
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        Icons.error_outline,
+                        size: 48,
                         color: Colors.grey,
                       ),
-                    ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Error loading statistics',
+                        style: TextStyle(
+                          fontSize: 18,
+                          color: Colors.grey[700],
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      ElevatedButton(
+                        onPressed: _refreshStats,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.ringPrimary,
+                          foregroundColor: Colors.white,
+                        ),
+                        child: const Text('Try Again'),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-              const SizedBox(height: 16),
+                )
+              : RefreshIndicator(
+                  onRefresh: _refreshStats,
+                  color: AppColors.ringPrimary,
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(24.0, 16.0, 24.0, 24.0),
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    children: [
+                      // Overview Section
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Overview',
+                            style: TextStyle(
+                              fontSize:
+                                  32, // Increased to 32 as per Figma design
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
 
-              // Horizontally scrollable circular progress indicators
-              SizedBox(
-                height: 180, // Fixed height for the progress indicators
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  physics: const BouncingScrollPhysics(),
-                  children: [
-                    // Strikes percentage
-                    _buildCircularProgressIndicator(
-                      label: 'Strikes',
-                      percentage: firstBallStats['strikes']!.toDouble(),
-                      animation: _animation,
-                    ),
+                          // Horizontally scrollable stats boxes
+                          SizedBox(
+                            height: 120, // Fixed height for the stat boxes
+                            child: ListView(
+                              scrollDirection: Axis.horizontal,
+                              physics: const BouncingScrollPhysics(),
+                              children: [
+                                // Games Played Box
+                                _buildStatBox(
+                                  title: 'Games',
+                                  value: statsData['gamesPlayed'].toString(),
+                                ),
 
-                    // Leaves percentage
-                    _buildCircularProgressIndicator(
-                      label: 'Leaves',
-                      percentage: firstBallStats['leaves']!.toDouble(),
-                      animation: _animation,
-                    ),
+                                // Average Score Box
+                                _buildStatBox(
+                                  title: 'Avg',
+                                  value: statsData['average'].toString(),
+                                ),
 
-                    // Splits percentage
-                    _buildCircularProgressIndicator(
-                      label: 'Splits',
-                      percentage: firstBallStats['splits']!.toDouble(),
-                      animation: _animation,
-                    ),
-                  ],
+                                // Best Score Box
+                                _buildStatBox(
+                                  title: 'Best',
+                                  value: statsData['best'].toString(),
+                                ),
+
+                                // Strike/Spare Percentage Box
+                                _buildStatBox(
+                                  title: 'Strike/Spare',
+                                  value: '${statsData['cleanPercentage']}%',
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(
+                          height: 48), // Increased gap between sections
+
+                      // Score Graph Section
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Title row with Score and Last 10 games
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                'Score',
+                                style: TextStyle(
+                                  fontSize: 32,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.black,
+                                ),
+                              ),
+                              Text(
+                                'Last ${gameScores.length} games',
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+
+                          // Score Graph
+                          Container(
+                            height: 300, // Fixed height for the graph
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(16.0, 20, 16.0,
+                                  40), // Reduced horizontal padding
+                              child: _buildScoreGraph(gameScores),
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 48), // Gap between sections
+
+                      // First Ball Section
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Title row with First ball and Refresh button
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                'First ball',
+                                style: TextStyle(
+                                  fontSize: 32,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.black,
+                                ),
+                              ),
+                              GestureDetector(
+                                onTap: _refreshStats,
+                                child: const Text(
+                                  'Refresh',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+
+                          // Horizontally scrollable circular progress indicators
+                          SizedBox(
+                            height:
+                                180, // Fixed height for the progress indicators
+                            child: ListView(
+                              scrollDirection: Axis.horizontal,
+                              physics: const BouncingScrollPhysics(),
+                              children: [
+                                // Strikes percentage
+                                _buildCircularProgressIndicator(
+                                  label: 'Strikes',
+                                  percentage:
+                                      firstBallStats['strikes']!.toDouble(),
+                                  animation: _animation,
+                                ),
+
+                                // Leaves percentage
+                                _buildCircularProgressIndicator(
+                                  label: 'Leaves',
+                                  percentage:
+                                      firstBallStats['leaves']!.toDouble(),
+                                  animation: _animation,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
-          ),
-        ],
-      ),
     );
   }
 
   // Helper method to build a stat box
   Widget _buildStatBox({required String title, required String value}) {
     return Container(
-      width: 120,
+      width: title.length > 5 ? 140 : 120, // Wider for longer titles
       margin: const EdgeInsets.only(right: 16),
       decoration: BoxDecoration(
         color: AppColors.ringBackground3rd,
@@ -324,10 +360,13 @@ class _StatsScreenState extends State<StatsScreen>
             Text(
               title,
               style: const TextStyle(
-                fontSize: 18,
+                fontSize: 16,
                 fontWeight: FontWeight.bold,
                 color: Colors.white,
               ),
+              textAlign: TextAlign.center,
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
             ),
             const Spacer(), // Push value to the bottom
             // Value with larger font

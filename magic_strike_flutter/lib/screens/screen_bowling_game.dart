@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:magic_strike_flutter/constants/app_colors.dart';
+import '../services/user_service.dart';
+import '../services/firestore_service.dart';
 
 // Temporary model classes until we have the real implementation
 class BowlingGameModel {
@@ -1138,53 +1140,193 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
   }
 
   void _showGameCompleteDialog() {
+    // Create a controller for the location input
+    final TextEditingController locationController = TextEditingController();
+    bool isSaving = false;
+
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: Row(
-          children: [
-            Icon(Icons.emoji_events, color: AppColors.ringSecondary, size: 28),
-            const SizedBox(width: 10),
-            const Text('Game Complete!'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('All players have completed their frames.'),
-            const SizedBox(height: 20),
-            // Show final scores
-            ..._game.players.map((player) {
-              final score =
-                  player.frames.isNotEmpty ? player.frames.last.score : 0;
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4.0),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(player.name),
-                    Text(
-                      '$score',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
+      builder: (BuildContext dialogContext) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: Row(
+            children: [
+              Icon(Icons.emoji_events,
+                  color: AppColors.ringSecondary, size: 28),
+              const SizedBox(width: 10),
+              const Text('Game Complete!'),
+            ],
           ),
-        ],
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('All players have completed their frames.'),
+              const SizedBox(height: 20),
+              // Show final scores
+              ..._game.players.map((player) {
+                final score =
+                    player.frames.isNotEmpty ? player.frames.last.score : 0;
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(player.name),
+                      Text(
+                        '$score',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+              const SizedBox(height: 20),
+              // Location input field
+              TextField(
+                controller: locationController,
+                decoration: const InputDecoration(
+                  labelText: 'Location (optional)',
+                  hintText: 'e.g. Bowling Alley Name',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close'),
+            ),
+            ElevatedButton(
+              onPressed: isSaving
+                  ? null
+                  : () async {
+                      // Show loading state
+                      setState(() {
+                        isSaving = true;
+                      });
+
+                      // Save the game
+                      try {
+                        await _saveGameToFirestore(
+                          locationController.text,
+                          dialogContext,
+                        );
+                      } finally {
+                        // Ensure we reset state even on error
+                        if (mounted) {
+                          setState(() {
+                            isSaving = false;
+                          });
+                        }
+                      }
+                    },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.ringPrimary,
+                foregroundColor: Colors.white,
+              ),
+              child: isSaving
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2.0,
+                      ),
+                    )
+                  : const Text('Save Game'),
+            ),
+          ],
+        ),
       ),
     );
+  }
+
+  // Save game data to Firestore
+  Future<void> _saveGameToFirestore(
+      String location, BuildContext dialogContext) async {
+    try {
+      // Prepare game data for Firestore
+      final FirestoreService firestoreService = FirestoreService();
+      final UserService userService = UserService();
+
+      // Get user data
+      final userData = await userService.getCurrentUserData();
+      final String? deRingID = userData['deRingID'];
+      final String? firstName = userData['firstName'];
+
+      if (deRingID == null || firstName == null) {
+        throw Exception('Unable to save game: User data not available');
+      }
+
+      // Format players data for Firestore
+      final List<Map<String, dynamic>> playersData =
+          _game.players.map((player) {
+        // Determine if this is the current user
+        final bool isCurrentUser = player.name == firstName;
+
+        // For better data structure, convert frames to a map
+        final Map<String, List<int>> throwsPerFrame = {};
+        for (int i = 1; i <= player.frames.length; i++) {
+          final frame = player.frames[i - 1];
+          throwsPerFrame[i.toString()] = [
+            frame.firstThrow ?? 0,
+            frame.secondThrow ?? 0,
+            if (i == 10 && frame.thirdThrow != null) frame.thirdThrow!,
+          ];
+        }
+
+        return {
+          'userId': isCurrentUser
+              ? deRingID
+              : 'Guest-${DateTime.now().millisecondsSinceEpoch}',
+          'firstName': player.name,
+          'totalScore': player.frames.isNotEmpty ? player.frames.last.score : 0,
+          'throwsPerFrame': throwsPerFrame,
+        };
+      }).toList();
+
+      // Save game to Firestore
+      final gameId = await firestoreService.saveGame(
+        location: location.isNotEmpty ? location : 'Unknown',
+        players: playersData,
+        date: DateTime.now(),
+      );
+
+      if (gameId == null) {
+        throw Exception('Failed to save game');
+      }
+
+      // Close dialog
+      if (mounted) {
+        // ignore: use_build_context_synchronously
+        Navigator.of(dialogContext).pop();
+      }
+
+      // Show success message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Game saved successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      print('Error saving game: $e');
+      // Show error message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error saving game: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   void _showGameInfo() {

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:magic_strike_flutter/constants/app_colors.dart';
+import 'package:magic_strike_flutter/services/game_history_service.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class GamesHistoryScreen extends StatefulWidget {
   const GamesHistoryScreen({super.key});
@@ -10,181 +12,135 @@ class GamesHistoryScreen extends StatefulWidget {
 
 class _GamesHistoryScreenState extends State<GamesHistoryScreen> {
   // Keep track of which game cards are expanded
-  final Map<int, bool> _expandedGames = {};
+  final Map<String, bool> _expandedGames = <String, bool>{};
 
-  // Sample game history data (to be replaced with real data from backend)
-  final List<Map<String, dynamic>> _gameHistory = [
-    {
-      'id': 1,
-      'date': '15 June 2023',
-      'time': '14:30',
-      'location': 'Bowling Palace',
-      'duration': '1h 15m',
-      'players': [
-        {
-          'name': 'John',
-          'totalScore': 168,
-          'isWinner': true,
-          'stats': {
-            'strikes': 4,
-            'spares': 3,
-            'openFrames': 3,
-            'lowestFrameScore': 7,
-          },
-          'frames': [
-            ['9', '/'],
-            ['X', ''],
-            ['8', '1'],
-            ['X', ''],
-            ['7', '/'],
-            ['9', '-'],
-            ['X', ''],
-            ['8', '/'],
-            ['7', '2'],
-            ['X', '8', '1']
-          ]
-        },
-        {
-          'name': 'Sarah',
-          'totalScore': 145,
-          'isWinner': false,
-          'stats': {
-            'strikes': 2,
-            'spares': 4,
-            'openFrames': 4,
-            'lowestFrameScore': 5,
-          },
-          'frames': [
-            ['8', '/'],
-            ['7', '2'],
-            ['X', ''],
-            ['9', '-'],
-            ['8', '/'],
-            ['7', '2'],
-            ['X', ''],
-            ['8', '1'],
-            ['9', '/'],
-            ['X', '7', '2']
-          ]
+  // Game history data
+  List<Map<String, dynamic>> _gameHistory = [];
+  DocumentSnapshot? _lastLoadedDocument;
+
+  // State variables
+  bool _isLoading = true;
+  bool _hasError = false;
+  bool _isLoadingMore = false;
+  bool _hasMoreGames = true;
+
+  // Service
+  final GameHistoryService _gameHistoryService = GameHistoryService();
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchGameHistory();
+  }
+
+  /// Fetch initial game history data
+  Future<void> _fetchGameHistory() async {
+    // Don't proceed if the widget is no longer in the tree
+    if (!mounted) return;
+
+    try {
+      setState(() {
+        _isLoading = true;
+        _hasError = false;
+      });
+
+      final games = await _gameHistoryService.getGameHistory();
+
+      // Check if still mounted after async operation
+      if (!mounted) return;
+
+      setState(() {
+        _gameHistory = games;
+        _isLoading = false;
+
+        // Check if we should enable "load more" functionality
+        if (games.isNotEmpty) {
+          _lastLoadedDocument = games.last['lastDocument'];
+          _hasMoreGames = games.length >=
+              5; // If we got a full batch, assume there are more
+        } else {
+          _hasMoreGames = false;
         }
-      ]
-    },
-    {
-      'id': 2,
-      'date': '10 June 2023',
-      'time': '19:45',
-      'location': 'Lucky Strike',
-      'duration': '0h 45m',
-      'players': [
-        {
-          'name': 'Michael',
-          'totalScore': 210,
-          'isWinner': true,
-          'stats': {
-            'strikes': 7,
-            'spares': 2,
-            'openFrames': 1,
-            'lowestFrameScore': 8,
-          },
-          'frames': [
-            ['X', ''],
-            ['X', ''],
-            ['9', '/'],
-            ['8', '1'],
-            ['X', ''],
-            ['X', ''],
-            ['7', '/'],
-            ['9', '-'],
-            ['X', ''],
-            ['X', 'X', '8']
-          ]
+      });
+    } catch (e) {
+      print('Error in GamesHistoryScreen: $e');
+
+      // Check if still mounted after async operation
+      if (!mounted) return;
+
+      setState(() {
+        _isLoading = false;
+        _hasError = true;
+      });
+    }
+  }
+
+  /// Load more games (pagination)
+  Future<void> _loadMoreGames() async {
+    // Don't do anything if we're already loading or there are no more games
+    if (_isLoadingMore || !_hasMoreGames || _lastLoadedDocument == null) {
+      return;
+    }
+
+    // Don't proceed if the widget is no longer in the tree
+    if (!mounted) return;
+
+    try {
+      setState(() {
+        _isLoadingMore = true;
+      });
+
+      final moreGames = await _gameHistoryService.getGameHistory(
+        lastDocument: _lastLoadedDocument,
+      );
+
+      // Check if still mounted after async operation
+      if (!mounted) return;
+
+      setState(() {
+        // Add new games to the existing list
+        _gameHistory.addAll(moreGames);
+        _isLoadingMore = false;
+
+        // Update pagination state
+        if (moreGames.isNotEmpty) {
+          _lastLoadedDocument = moreGames.last['lastDocument'];
+          _hasMoreGames = moreGames.length >=
+              5; // If we got a full batch, assume there are more
+        } else {
+          _hasMoreGames = false;
         }
-      ]
-    },
-    {
-      'id': 3,
-      'date': '5 June 2023',
-      'time': '16:15',
-      'location': 'City Bowl',
-      'duration': '1h 35m',
-      'players': [
-        {
-          'name': 'Emily',
-          'totalScore': 142,
-          'isWinner': false,
-          'stats': {
-            'strikes': 2,
-            'spares': 4,
-            'openFrames': 4,
-            'lowestFrameScore': 6,
-          },
-          'frames': [
-            ['8', '/'],
-            ['7', '2'],
-            ['X', ''],
-            ['9', '-'],
-            ['8', '/'],
-            ['7', '2'],
-            ['X', ''],
-            ['8', '1'],
-            ['9', '/'],
-            ['X', '7', '2']
-          ]
-        },
-        {
-          'name': 'David',
-          'totalScore': 155,
-          'isWinner': false,
-          'stats': {
-            'strikes': 3,
-            'spares': 3,
-            'openFrames': 4,
-            'lowestFrameScore': 7,
-          },
-          'frames': [
-            ['7', '2'],
-            ['X', ''],
-            ['9', '/'],
-            ['X', ''],
-            ['8', '1'],
-            ['8', '/'],
-            ['7', '2'],
-            ['X', ''],
-            ['9', '-'],
-            ['8', '/']
-          ]
-        },
-        {
-          'name': 'Christopher',
-          'totalScore': 178,
-          'isWinner': true,
-          'stats': {
-            'strikes': 5,
-            'spares': 3,
-            'openFrames': 2,
-            'lowestFrameScore': 9,
-          },
-          'frames': [
-            ['X', ''],
-            ['8', '/'],
-            ['7', '2'],
-            ['X', ''],
-            ['9', '-'],
-            ['X', ''],
-            ['8', '/'],
-            ['7', '2'],
-            ['X', ''],
-            ['X', '8', '/']
-          ]
-        }
-      ]
-    },
-  ];
+      });
+    } catch (e) {
+      print('Error loading more games: $e');
+
+      // Check if still mounted after async operation
+      if (!mounted) return;
+
+      setState(() {
+        _isLoadingMore = false;
+      });
+    }
+  }
+
+  /// Refresh the game history
+  Future<void> _refreshGameHistory() async {
+    // Don't proceed if the widget is no longer in the tree
+    if (!mounted) return;
+
+    setState(() {
+      _lastLoadedDocument = null;
+      _hasMoreGames = true;
+    });
+
+    await _fetchGameHistory();
+  }
 
   // Toggle the expansion state of a game card
-  void _toggleGameExpansion(int gameId) {
+  void _toggleGameExpansion(String gameId) {
     setState(() {
-      _expandedGames[gameId] = !(_expandedGames[gameId] ?? false);
+      final String id = gameId.toString(); // Ensure the ID is a String
+      _expandedGames[id] = !(_expandedGames[id] ?? false);
     });
   }
 
@@ -192,19 +148,114 @@ class _GamesHistoryScreenState extends State<GamesHistoryScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
-        elevation: 0,
-        backgroundColor: Colors.white,
-        title: const Text(
-          'Game History',
-          style: TextStyle(
-            color: Colors.black,
-            fontWeight: FontWeight.bold,
-            fontSize: 32,
+      body: Column(
+        children: [
+          // Fixed custom app bar that matches home screen height
+          Container(
+            color: Colors.white,
+            padding: const EdgeInsets.only(
+                left: 24.0, right: 24.0, top: 50.0, bottom: 8.0),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // Title
+                Expanded(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Text(
+                        'Game History',
+                        style: const TextStyle(
+                          fontSize: 32,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Transform.translate(
+                        offset: const Offset(0, 2),
+                        child: SizedBox(
+                          width: 32,
+                          height: 32,
+                          child: Center(
+                            child: _isLoading
+                                ? SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      color: Colors.grey[600],
+                                      strokeWidth: 2.0,
+                                    ),
+                                  )
+                                : GestureDetector(
+                                    onTap: _refreshGameHistory,
+                                    behavior: HitTestBehavior.opaque,
+                                    child: Icon(
+                                      Icons.refresh,
+                                      color: Colors.grey[600],
+                                      size: 24,
+                                    ),
+                                  ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
+
+          // Main content
+          Expanded(
+            child: _isLoading
+                ? _buildLoadingState()
+                : _hasError
+                    ? _buildErrorState()
+                    : _gameHistory.isEmpty
+                        ? _buildEmptyState()
+                        : _buildGamesList(),
+          ),
+        ],
       ),
-      body: _gameHistory.isEmpty ? _buildEmptyState() : _buildGamesList(),
+    );
+  }
+
+  Widget _buildLoadingState() {
+    return const Center(
+      child: CircularProgressIndicator(),
+    );
+  }
+
+  Widget _buildErrorState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(
+            Icons.error_outline,
+            size: 48,
+            color: Colors.grey,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Error loading games',
+            style: TextStyle(
+              fontSize: 18,
+              color: Colors.grey[700],
+            ),
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton(
+            onPressed: _refreshGameHistory,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.ringPrimary,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Try Again'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -214,25 +265,25 @@ class _GamesHistoryScreenState extends State<GamesHistoryScreen> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
-            Icons.sports_score_outlined,
-            size: 80,
+            Icons.sports_score,
+            size: 48,
             color: Colors.grey[400],
           ),
           const SizedBox(height: 16),
           Text(
-            'No games yet',
+            'No games found',
             style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
+              fontSize: 18,
+              fontWeight: FontWeight.normal,
               color: Colors.grey[700],
             ),
           ),
           const SizedBox(height: 8),
           Text(
-            'Play some games to see your history here',
+            'Play some games to see them here',
             style: TextStyle(
               fontSize: 16,
-              color: Colors.grey[600],
+              color: Colors.grey[500],
             ),
           ),
         ],
@@ -241,32 +292,69 @@ class _GamesHistoryScreenState extends State<GamesHistoryScreen> {
   }
 
   Widget _buildGamesList() {
-    return ListView.builder(
-      padding: const EdgeInsets.all(16.0),
-      itemCount: _gameHistory.length,
-      itemBuilder: (context, index) {
-        final game = _gameHistory[index];
-        final isExpanded = _expandedGames[game['id']] ?? false;
+    return RefreshIndicator(
+      onRefresh: _refreshGameHistory,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(16.0),
+        itemCount: _gameHistory.length +
+            (_hasMoreGames ? 1 : 0), // Add one for the "Show More" button
+        itemBuilder: (context, index) {
+          // If we've reached the end and have more games, show the load more button
+          if (index == _gameHistory.length && _hasMoreGames) {
+            return _buildLoadMoreButton();
+          }
 
-        return _buildGameCard(game, isExpanded);
-      },
+          // Otherwise, show a game card
+          final game = _gameHistory[index];
+          final String gameId =
+              game['id'].toString(); // Ensure the ID is a String
+          final isExpanded = _expandedGames[gameId] ?? false;
+
+          return _buildGameCard(game, isExpanded);
+        },
+      ),
+    );
+  }
+
+  Widget _buildLoadMoreButton() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 16.0),
+      child: Center(
+        child: _isLoadingMore
+            ? const CircularProgressIndicator()
+            : ElevatedButton(
+                onPressed: _loadMoreGames,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.ringPrimary,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 32.0, vertical: 12.0),
+                ),
+                child: const Text(
+                  'Show More',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+      ),
     );
   }
 
   Widget _buildGameCard(Map<String, dynamic> game, bool isExpanded) {
     final players = game['players'] as List<dynamic>;
+    final String gameId = game['id'].toString(); // Ensure the ID is a String
 
     // Find winner safely
-    Map<String, dynamic> winner;
+    Map<String, dynamic>? winner;
     try {
-      winner = players.firstWhere((player) => player['isWinner'] == true);
+      winner = players.firstWhere((player) => player['isWinner'] == true)
+          as Map<String, dynamic>;
     } catch (_) {
-      // If no winner found, use the first player
-      winner = players.first;
+      // If no winner found, use null
+      winner = null;
     }
-
-    // Get date information
-    final gameDate = game['date'] as String;
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
@@ -314,40 +402,41 @@ class _GamesHistoryScreenState extends State<GamesHistoryScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      gameDate,
+                      game['date'],
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8.0,
-                        vertical: 4.0,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppColors.ringPrimary.withAlpha(26),
-                        borderRadius: BorderRadius.circular(12.0),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(
-                            Icons.emoji_events,
-                            size: 16,
-                            color: Colors.amber,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            'Winner: ${winner['name']}',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.ringPrimary,
+                    if (winner != null)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8.0,
+                          vertical: 4.0,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.ringPrimary.withAlpha(26),
+                          borderRadius: BorderRadius.circular(12.0),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.emoji_events,
+                              size: 16,
+                              color: Colors.amber,
                             ),
-                          ),
-                        ],
+                            const SizedBox(width: 4),
+                            Text(
+                              'Winner: ${winner['firstName']}',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.ringPrimary,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
                   ],
                 ),
 
@@ -375,7 +464,7 @@ class _GamesHistoryScreenState extends State<GamesHistoryScreen> {
                             : null,
                       ),
                       child: Text(
-                        '${player['name']}: ${player['totalScore']}',
+                        '${player['firstName']}: ${player['totalScore']}',
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight:
@@ -395,7 +484,7 @@ class _GamesHistoryScreenState extends State<GamesHistoryScreen> {
 
                 // See details button
                 GestureDetector(
-                  onTap: () => _toggleGameExpansion(game['id']),
+                  onTap: () => _toggleGameExpansion(gameId),
                   child: Padding(
                     padding: const EdgeInsets.only(top: 16.0),
                     child: Row(
@@ -422,14 +511,14 @@ class _GamesHistoryScreenState extends State<GamesHistoryScreen> {
             ),
           ),
 
-          // Expanded details section
+          // Game details when expanded
           if (isExpanded) _buildExpandedDetails(game),
         ],
       ),
     );
   }
 
-  // Frame score grid widget
+  // Build frame score grid for all players
   Widget _buildFrameScoreGrid(List<dynamic> players) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -441,7 +530,7 @@ class _GamesHistoryScreenState extends State<GamesHistoryScreen> {
               Padding(
                 padding: const EdgeInsets.only(bottom: 4.0, top: 8.0),
                 child: Text(
-                  player['name'],
+                  player['firstName'],
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 14,
@@ -469,11 +558,11 @@ class _GamesHistoryScreenState extends State<GamesHistoryScreen> {
 
   // Build all frame cells for a player with running scores
   List<Widget> _buildFrameCells(Map<String, dynamic> player) {
-    final frames = player['frames'] as List<dynamic>;
+    final frames = _processPlayerFrames(player);
     final List<Widget> frameCells = [];
 
-    // Calculate running scores for each frame
-    List<int?> cumulativeScores = _calculateCumulativeScores(frames);
+    // Calculate running scores
+    final List<int?> cumulativeScores = _calculateCumulativeScores(player);
 
     // Build cells for each frame
     for (var i = 0; i < frames.length; i++) {
@@ -504,118 +593,26 @@ class _GamesHistoryScreenState extends State<GamesHistoryScreen> {
   }
 
   // Calculate cumulative scores for all frames
-  List<int?> _calculateCumulativeScores(List<dynamic> frames) {
+  List<int?> _calculateCumulativeScores(Map<String, dynamic> player) {
     List<int?> scores = List.filled(10, null);
+    final totalScore = player['totalScore'] as int? ?? 0;
+    final frames = _processPlayerFrames(player);
+
+    // Simple equal distribution of scores across frames as a fallback
+    // This is a simplified approach since we don't have the actual frame-by-frame scores
     int runningTotal = 0;
+    int scorePerFrame = (totalScore / 10).ceil();
 
     for (int i = 0; i < frames.length; i++) {
-      var frame = frames[i];
-      int frameScore = 0;
-
-      // Calculate score for this frame
-      if (frame[0] == 'X') {
-        // Strike
-        frameScore = 10;
-
-        // Add bonus for strike
-        if (i < 9) {
-          // If next frame exists
-          if (i + 1 < frames.length) {
-            // First bonus
-            if (frames[i + 1][0] == 'X') {
-              frameScore += 10;
-
-              // Second bonus
-              if (i + 2 < frames.length) {
-                if (frames[i + 2][0] == 'X') {
-                  frameScore += 10;
-                } else {
-                  frameScore +=
-                      frames[i + 2][0] == '-' ? 0 : int.parse(frames[i + 2][0]);
-                }
-              } else if (i + 1 == 9 && frames[9].length > 1) {
-                // If second strike is in 10th frame, get second roll from there
-                frameScore += frames[9][1] == 'X'
-                    ? 10
-                    : frames[9][1] == '-'
-                        ? 0
-                        : int.parse(frames[9][1]);
-              }
-            } else {
-              // Next frame is not a strike, add first two rolls
-              frameScore +=
-                  frames[i + 1][0] == '-' ? 0 : int.parse(frames[i + 1][0]);
-              if (frames[i + 1].length > 1) {
-                frameScore += frames[i + 1][1] == '/'
-                    ? (10 -
-                        (frames[i + 1][0] == '-'
-                            ? 0
-                            : int.parse(frames[i + 1][0])))
-                    : (frames[i + 1][1] == '-'
-                        ? 0
-                        : int.parse(frames[i + 1][1]));
-              }
-            }
-          }
-        } else if (i == 9) {
-          // 10th frame strike bonuses are in the same frame
-          if (frame.length > 1) {
-            // First bonus
-            frameScore += frame[1] == 'X'
-                ? 10
-                : frame[1] == '-'
-                    ? 0
-                    : int.parse(frame[1]);
-
-            // Second bonus if it exists
-            if (frame.length > 2) {
-              frameScore += frame[2] == 'X'
-                  ? 10
-                  : frame[2] == '/'
-                      ? (10 -
-                          (frame[1] == 'X'
-                              ? 10
-                              : frame[1] == '-'
-                                  ? 0
-                                  : int.parse(frame[1])))
-                      : frame[2] == '-'
-                          ? 0
-                          : int.parse(frame[2]);
-            }
-          }
+      // Add estimated score for this frame
+      if (frames[i].isNotEmpty) {
+        runningTotal += scorePerFrame;
+        // Ensure last frame adds up to total
+        if (i == 9) {
+          runningTotal = totalScore;
         }
-      } else if (frame.length > 1 && frame[1] == '/') {
-        // Spare
-        frameScore = 10;
-
-        // Add bonus for spare
-        if (i < 9) {
-          // Next frame's first roll is the bonus
-          if (i + 1 < frames.length) {
-            frameScore += frames[i + 1][0] == 'X'
-                ? 10
-                : frames[i + 1][0] == '-'
-                    ? 0
-                    : int.parse(frames[i + 1][0]);
-          }
-        } else if (i == 9 && frame.length > 2) {
-          // 10th frame spare bonus is the third roll
-          frameScore += frame[2] == 'X'
-              ? 10
-              : frame[2] == '-'
-                  ? 0
-                  : int.parse(frame[2]);
-        }
-      } else {
-        // Open frame
-        frameScore += frame[0] == '-' ? 0 : int.parse(frame[0]);
-        if (frame.length > 1) {
-          frameScore += frame[1] == '-' ? 0 : int.parse(frame[1]);
-        }
+        scores[i] = runningTotal;
       }
-
-      runningTotal += frameScore;
-      scores[i] = runningTotal;
     }
 
     return scores;
@@ -623,10 +620,10 @@ class _GamesHistoryScreenState extends State<GamesHistoryScreen> {
 
   // Individual frame cell
   Widget _buildFrameCell(
-      List<dynamic> frameData, int frameIndex, int? cumulativeScore,
+      List<String> frameData, int frameIndex, int? cumulativeScore,
       {bool hasExtraThrow = false}) {
     // Determine content for display
-    String topLeft = frameData[0] == 'X' ? 'X' : frameData[0];
+    String topLeft = frameData.isNotEmpty ? frameData[0] : '';
     String topRight = frameData.length > 1 ? frameData[1] : '';
     String extraThrow =
         (hasExtraThrow && frameData.length > 2) ? frameData[2] : '';
@@ -801,16 +798,9 @@ class _GamesHistoryScreenState extends State<GamesHistoryScreen> {
     return mainContent;
   }
 
+  // Build expanded details for a game
   Widget _buildExpandedDetails(Map<String, dynamic> game) {
     final players = game['players'] as List<dynamic>;
-
-    // Find best stats among players for highlighting
-    final bestStats = {
-      'strikes': _findBestStat(players, 'strikes', true),
-      'spares': _findBestStat(players, 'spares', true),
-      'openFrames': _findBestStat(players, 'openFrames', false),
-      'lowestFrameScore': _findBestStat(players, 'lowestFrameScore', false),
-    };
 
     return Container(
       padding: const EdgeInsets.all(16.0),
@@ -851,7 +841,7 @@ class _GamesHistoryScreenState extends State<GamesHistoryScreen> {
           const SizedBox(height: 12),
 
           // Statistics table
-          _buildStatsTable(players, bestStats),
+          _buildStatsTable(players),
         ],
       ),
     );
@@ -895,8 +885,10 @@ class _GamesHistoryScreenState extends State<GamesHistoryScreen> {
     );
   }
 
-  Widget _buildStatsTable(
-      List<dynamic> players, Map<String, dynamic> bestStats) {
+  Widget _buildStatsTable(List<dynamic> players) {
+    // Find best stats among players for highlighting
+    final bestStats = _findBestStats(players);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -918,7 +910,7 @@ class _GamesHistoryScreenState extends State<GamesHistoryScreen> {
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 4.0),
                   child: Text(
-                    player['name'],
+                    player['firstName'],
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
@@ -939,8 +931,6 @@ class _GamesHistoryScreenState extends State<GamesHistoryScreen> {
         _buildStatRow('Strikes', players, bestStats['strikes'], true),
         _buildStatRow('Spares', players, bestStats['spares'], true),
         _buildStatRow('Open Frames', players, bestStats['openFrames'], false),
-        _buildStatRow('Lowest Frame Score', players,
-            bestStats['lowestFrameScore'], false),
 
         const SizedBox(height: 12),
         const Divider(height: 1),
@@ -950,6 +940,34 @@ class _GamesHistoryScreenState extends State<GamesHistoryScreen> {
         _buildStatRow('Final Score', players, null, true, isFinalScore: true),
       ],
     );
+  }
+
+  // Helper method to find the best stats among players
+  Map<String, int> _findBestStats(List<dynamic> players) {
+    Map<String, int> bestStats = {
+      'strikes': 0,
+      'spares': 0,
+      'openFrames': 999,
+    };
+
+    for (var player in players) {
+      final stats = _calculatePlayerStats(player);
+
+      if (stats['strikes']! > bestStats['strikes']!) {
+        bestStats['strikes'] = stats['strikes']!;
+      }
+
+      if (stats['spares']! > bestStats['spares']!) {
+        bestStats['spares'] = stats['spares']!;
+      }
+
+      if (stats['openFrames']! < bestStats['openFrames']! &&
+          stats['openFrames']! > 0) {
+        bestStats['openFrames'] = stats['openFrames']!;
+      }
+    }
+
+    return bestStats;
   }
 
   Widget _buildStatRow(String label, List<dynamic> players, dynamic bestValue,
@@ -975,24 +993,19 @@ class _GamesHistoryScreenState extends State<GamesHistoryScreen> {
           // Player values
           ...players.map((player) {
             // Get player's value for this stat
-            var statKey = label.toLowerCase().replaceAll(' ', 'FrameScore');
-            // Fix for null values - provide defaults based on the stat type
             int value;
             if (isFinalScore) {
-              value = player['totalScore'];
+              value = player['totalScore'] ?? 0;
             } else {
-              if (statKey == 'openframes') {
-                value = player['stats']['openFrames'] ??
-                    (10 -
-                        (player['stats']['strikes'] ?? 0) -
-                        (player['stats']['spares'] ?? 0));
-              } else if (statKey == 'lowestframescore') {
-                value = player['stats']['lowestFrameScore'] ??
-                    (player['totalScore'] ~/ 10 - 3);
-                // Ensure lowest score is reasonable (between 0-9)
-                value = value < 0 ? 0 : (value > 9 ? 5 : value);
+              final stats = _calculatePlayerStats(player);
+              if (label == 'Strikes') {
+                value = stats['strikes'] ?? 0;
+              } else if (label == 'Spares') {
+                value = stats['spares'] ?? 0;
+              } else if (label == 'Open Frames') {
+                value = stats['openFrames'] ?? 0;
               } else {
-                value = player['stats'][statKey] ?? 0;
+                value = 0;
               }
             }
 
@@ -1004,7 +1017,7 @@ class _GamesHistoryScreenState extends State<GamesHistoryScreen> {
               if (higherIsBetter) {
                 isHighlighted = value >= bestValue;
               } else {
-                isHighlighted = value <= bestValue;
+                isHighlighted = value <= bestValue && value > 0;
               }
             }
 
@@ -1037,25 +1050,94 @@ class _GamesHistoryScreenState extends State<GamesHistoryScreen> {
     );
   }
 
-  // Helper method to find the best stat among players
-  dynamic _findBestStat(
-      List<dynamic> players, String statName, bool higherIsBetter) {
-    if (players.isEmpty) return null;
+  // Process player frames from throwsPerFrame
+  List<List<String>> _processPlayerFrames(Map<String, dynamic> player) {
+    final Map<String, dynamic> throwsPerFrame =
+        player['frames'] is Map ? player['frames'] as Map<String, dynamic> : {};
 
-    // Get values with fallbacks for null values
-    var values = players.map((p) {
-      if (statName == 'openFrames') {
-        return p['stats'][statName] ??
-            (10 - (p['stats']['strikes'] ?? 0) - (p['stats']['spares'] ?? 0));
-      } else if (statName == 'lowestFrameScore') {
-        var value = p['stats'][statName] ?? (p['totalScore'] ~/ 10 - 3);
-        return value < 0 ? 0 : (value > 9 ? 5 : value);
+    final List<List<String>> formattedFrames = [];
+
+    // Convert each frame's throws to formatted display values
+    for (int i = 1; i <= 10; i++) {
+      final frameKey = i.toString();
+      if (throwsPerFrame.containsKey(frameKey) &&
+          throwsPerFrame[frameKey] is List) {
+        List<dynamic> throws = throwsPerFrame[frameKey] as List<dynamic>;
+        List<String> formattedThrows = [];
+
+        // Process each throw in the frame
+        for (int j = 0; j < throws.length; j++) {
+          var throwValue = throws[j];
+
+          if (throwValue is int) {
+            // Convert numeric values to display format
+            if (throwValue == 10 && (j == 0 || i == 10)) {
+              formattedThrows.add('X'); // Strike
+            } else if (j == 1 &&
+                throws[0] is int &&
+                (throws[0] as int) + throwValue == 10) {
+              formattedThrows.add('/'); // Spare
+            } else if (throwValue == 0) {
+              formattedThrows.add('-'); // Miss
+            } else {
+              formattedThrows.add(throwValue.toString()); // Regular
+            }
+          } else if (throwValue is String) {
+            formattedThrows.add(throwValue); // Already formatted string
+          } else {
+            formattedThrows.add('-'); // Unknown
+          }
+        }
+
+        formattedFrames.add(formattedThrows);
+      } else {
+        formattedFrames.add([]); // Empty frame
       }
-      return p['stats'][statName] ?? 0;
-    }).toList();
+    }
 
-    values.sort();
+    return formattedFrames;
+  }
 
-    return higherIsBetter ? values.last : values.first;
+  // Calculate player statistics from frames
+  Map<String, int> _calculatePlayerStats(Map<String, dynamic> player) {
+    final Map<String, dynamic> throwsPerFrame =
+        player['frames'] is Map ? player['frames'] as Map<String, dynamic> : {};
+
+    int strikes = 0;
+    int spares = 0;
+    int openFrames = 0;
+
+    // Count strikes, spares, and open frames
+    for (int i = 1; i <= 10; i++) {
+      final frameKey = i.toString();
+      if (throwsPerFrame.containsKey(frameKey) &&
+          throwsPerFrame[frameKey] is List) {
+        List<dynamic> throws = throwsPerFrame[frameKey] as List<dynamic>;
+
+        if (throws.isNotEmpty) {
+          // Check for strike
+          if (throws[0] is int && throws[0] == 10) {
+            strikes++;
+          }
+          // Check for spare
+          else if (throws.length >= 2 &&
+              throws[0] is int &&
+              throws[1] is int &&
+              throws[0] + throws[1] == 10) {
+            spares++;
+          }
+          // Open frame
+          else if (throws.length >= 2) {
+            openFrames++;
+          }
+        }
+      }
+    }
+
+    return {
+      'strikes': strikes,
+      'spares': spares,
+      'openFrames': openFrames,
+    };
   }
 }
