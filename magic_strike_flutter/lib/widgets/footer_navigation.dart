@@ -28,11 +28,12 @@ class FooterNav extends StatelessWidget {
         unselectedLabelStyle: const TextStyle(
           fontWeight: FontWeight.bold,
         ),
+        elevation: 0,
         items: const [
           BottomNavigationBarItem(
               icon: Icon(FontAwesomeIcons.house), label: 'Home'),
           BottomNavigationBarItem(
-              icon: Icon(FontAwesomeIcons.chartBar), label: 'Stats'),
+              icon: Icon(FontAwesomeIcons.chartSimple), label: 'Stats'),
           BottomNavigationBarItem(
               icon: Icon(FontAwesomeIcons.bowlingBall), label: 'Play'),
           BottomNavigationBarItem(

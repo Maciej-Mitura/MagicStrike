@@ -104,248 +104,255 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
-
-    // Calculate the width and height of the game card
-    final cardWidth = screenWidth * 0.85; // 85% of screen width
-
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: Column(
-        children: [
-          // Fixed app bar that doesn't scroll
-          Container(
-            color: Colors.white,
-            padding: const EdgeInsets.only(
-                left: 24.0, right: 24.0, top: 50.0, bottom: 8.0),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                // Title
-                Expanded(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Text(
-                        'Latest games',
-                        style: const TextStyle(
-                          fontSize: 32,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Transform.translate(
-                        offset: const Offset(0, 2),
-                        child: SizedBox(
-                          width: 32,
-                          height: 32,
-                          child: Center(
-                            child: _isLoading
-                                ? SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(
-                                      color: Colors.grey[600],
-                                      strokeWidth: 2.0,
-                                    ),
-                                  )
-                                : IconButton(
-                                    icon: Icon(
-                                      Icons.refresh,
-                                      color: Colors.grey[600],
-                                      size: 24,
-                                    ),
-                                    onPressed: _fetchLatestGames,
-                                    tooltip: 'Refresh games',
-                                    splashColor: Colors.transparent,
-                                    highlightColor: Colors.transparent,
-                                    padding: EdgeInsets.zero,
-                                    constraints: BoxConstraints(),
-                                  ),
+    return Theme(
+      data: Theme.of(context).copyWith(
+        splashColor: Colors.transparent,
+        highlightColor: Colors.transparent,
+      ),
+      child: Scaffold(
+        backgroundColor: Colors.white,
+        body: Column(
+          children: [
+            // Fixed app bar that doesn't scroll
+            Container(
+              color: Colors.white,
+              padding: const EdgeInsets.only(
+                  left: 24.0, right: 24.0, top: 50.0, bottom: 8.0),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // Title
+                  Expanded(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Text(
+                          'Latest games',
+                          style: const TextStyle(
+                            fontSize: 32,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black,
                           ),
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: 6),
+                        Transform.translate(
+                          offset: const Offset(0, 2),
+                          child: SizedBox(
+                            width: 32,
+                            height: 32,
+                            child: Center(
+                              child: _isLoading
+                                  ? SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        color: Colors.grey[600],
+                                        strokeWidth: 2.0,
+                                      ),
+                                    )
+                                  : IconButton(
+                                      icon: Icon(
+                                        Icons.refresh,
+                                        color: Colors.grey[600],
+                                        size: 24,
+                                      ),
+                                      onPressed: _fetchLatestGames,
+                                      tooltip: 'Refresh games',
+                                      padding: EdgeInsets.zero,
+                                      constraints: BoxConstraints(),
+                                    ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
 
-          // Scrollable content below the fixed app bar
-          Expanded(
-            child: _isLoading
-                ? const Center(
-                    child: CircularProgressIndicator(),
-                  )
-                : _hasError
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(
-                              Icons.error_outline,
-                              size: 48,
-                              color: Colors.grey,
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'Error loading games',
-                              style: TextStyle(
-                                fontSize: 18,
-                                color: Colors.grey[700],
+            // Scrollable content below the fixed app bar
+            Expanded(
+              child: _isLoading
+                  ? const Center(
+                      child: CircularProgressIndicator(),
+                    )
+                  : _hasError
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(
+                                Icons.error_outline,
+                                size: 48,
+                                color: Colors.grey,
                               ),
-                            ),
-                            const SizedBox(height: 24),
-                            ElevatedButton(
-                              onPressed: _fetchLatestGames,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppColors.ringPrimary,
-                                foregroundColor: Colors.white,
+                              const SizedBox(height: 16),
+                              Text(
+                                'Error loading games',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  color: Colors.grey[700],
+                                ),
                               ),
-                              child: const Text('Try Again'),
-                            ),
-                          ],
-                        ),
-                      )
-                    : _latestGames.isEmpty
-                        ? Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  Icons.sports_score,
-                                  size: 48,
-                                  color: Colors.grey[400],
+                              const SizedBox(height: 24),
+                              ElevatedButton(
+                                onPressed: _fetchLatestGames,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.ringPrimary,
+                                  foregroundColor: Colors.white,
                                 ),
-                                const SizedBox(height: 16),
-                                Text(
-                                  'No games found',
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    color: Colors.grey[700],
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  'Play some games to see them here',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    color: Colors.grey[500],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          )
-                        : RefreshIndicator(
-                            onRefresh: _fetchLatestGames,
-                            color: AppColors.ringPrimary,
-                            child: ListView.builder(
-                              padding: const EdgeInsets.fromLTRB(
-                                  24.0, 8.0, 24.0, 24.0),
-                              physics: const AlwaysScrollableScrollPhysics(),
-                              itemCount: _latestGames.length,
-                              itemBuilder: (context, index) {
-                                final game = _latestGames[index];
-
-                                // Format timestamp to readable date
-                                String formattedDate = 'N/A';
-                                try {
-                                  if (game['date'] is Timestamp) {
-                                    final timestamp = game['date'] as Timestamp;
-                                    final date = timestamp.toDate();
-                                    formattedDate = _dateFormat.format(date);
-                                  } else if (game['date'] is String) {
-                                    // If it's already a string, use it directly
-                                    formattedDate = game['date'] as String;
-                                  }
-                                } catch (e) {
-                                  print('Error formatting date: $e');
-                                }
-
-                                // Extract players data safely
-                                List<dynamic> players = [];
-                                try {
-                                  if (game['players'] is List) {
-                                    players = game['players'] as List<dynamic>;
-                                  }
-                                } catch (e) {
-                                  print('Error extracting players: $e');
-                                }
-
-                                // If no players found, create a placeholder
-                                if (players.isEmpty) {
-                                  players = [
-                                    {'name': 'No player data', 'totalScore': 0}
-                                  ];
-                                }
-
-                                return Padding(
-                                  padding: const EdgeInsets.only(
-                                      bottom: 16.0), // Gap between cards
-                                  child: Container(
-                                    width: cardWidth,
-                                    // Set height based on player count plus space for header
-                                    // Use a minimum height of 125 and dynamic height based on player count
-                                    height: max(
-                                        125.0, 90.0 + (players.length * 35.0)),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(12.0),
-                                      border: Border.all(
-                                        color: AppColors.ringPrimary,
-                                        width: 1.0,
-                                      ),
-                                    ),
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(
-                                          12.0), // Reduce padding
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          // Game date at the top
-                                          Padding(
-                                            padding: const EdgeInsets.only(
-                                                bottom:
-                                                    8.0), // Reduced bottom padding
-                                            child: Text(
-                                              formattedDate,
-                                              style: const TextStyle(
-                                                fontSize: 18,
-                                                fontWeight: FontWeight.normal,
-                                                color: Colors.black,
-                                              ),
-                                            ),
-                                          ),
-
-                                          // Frames grid with player names
-                                          Expanded(
-                                            child: Container(
-                                              decoration: BoxDecoration(
-                                                color: Colors.white,
-                                                borderRadius:
-                                                    BorderRadius.circular(8.0),
-                                              ),
-                                              child: Padding(
-                                                padding: const EdgeInsets.all(
-                                                    2.0), // Reduced padding even more
-                                                child:
-                                                    _buildFramesGrid(players),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
+                                child: const Text('Try Again'),
+                              ),
+                            ],
                           ),
-          ),
-        ],
+                        )
+                      : _latestGames.isEmpty
+                          ? Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.sports_score,
+                                    size: 48,
+                                    color: Colors.grey[400],
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    'No games found',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      color: Colors.grey[700],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Play some games to see them here',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      color: Colors.grey[500],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          : RefreshIndicator(
+                              onRefresh: _fetchLatestGames,
+                              color: AppColors.ringPrimary,
+                              child: ListView.builder(
+                                padding: const EdgeInsets.fromLTRB(
+                                    24.0, 8.0, 24.0, 24.0),
+                                physics: const AlwaysScrollableScrollPhysics(),
+                                itemCount: _latestGames.length,
+                                itemBuilder: (context, index) {
+                                  final game = _latestGames[index];
+
+                                  // Format timestamp to readable date
+                                  String formattedDate = 'N/A';
+                                  try {
+                                    if (game['date'] is Timestamp) {
+                                      final timestamp =
+                                          game['date'] as Timestamp;
+                                      final date = timestamp.toDate();
+                                      formattedDate = _dateFormat.format(date);
+                                    } else if (game['date'] is String) {
+                                      // If it's already a string, use it directly
+                                      formattedDate = game['date'] as String;
+                                    }
+                                  } catch (e) {
+                                    print('Error formatting date: $e');
+                                  }
+
+                                  // Extract players data safely
+                                  List<dynamic> players = [];
+                                  try {
+                                    if (game['players'] is List) {
+                                      players =
+                                          game['players'] as List<dynamic>;
+                                    }
+                                  } catch (e) {
+                                    print('Error extracting players: $e');
+                                  }
+
+                                  // If no players found, create a placeholder
+                                  if (players.isEmpty) {
+                                    players = [
+                                      {
+                                        'name': 'No player data',
+                                        'totalScore': 0
+                                      }
+                                    ];
+                                  }
+
+                                  return Padding(
+                                    padding: const EdgeInsets.only(
+                                        bottom: 16.0), // Gap between cards
+                                    child: Container(
+                                      width: MediaQuery.of(context).size.width *
+                                          0.85,
+                                      // Set height based on player count plus space for header
+                                      // Use a minimum height of 125 and dynamic height based on player count
+                                      height: max(125.0,
+                                          90.0 + (players.length * 35.0)),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius:
+                                            BorderRadius.circular(12.0),
+                                        border: Border.all(
+                                          color: AppColors.ringPrimary,
+                                          width: 1.0,
+                                        ),
+                                      ),
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(
+                                            12.0), // Reduce padding
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            // Game date at the top
+                                            Padding(
+                                              padding: const EdgeInsets.only(
+                                                  bottom:
+                                                      8.0), // Reduced bottom padding
+                                              child: Text(
+                                                formattedDate,
+                                                style: const TextStyle(
+                                                  fontSize: 18,
+                                                  fontWeight: FontWeight.normal,
+                                                  color: Colors.black,
+                                                ),
+                                              ),
+                                            ),
+
+                                            // Frames grid with player names
+                                            Expanded(
+                                              child: Container(
+                                                decoration: BoxDecoration(
+                                                  color: Colors.white,
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                          8.0),
+                                                ),
+                                                child: Padding(
+                                                  padding: const EdgeInsets.all(
+                                                      2.0), // Reduced padding even more
+                                                  child:
+                                                      _buildFramesGrid(players),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+            ),
+          ],
+        ),
       ),
     );
   }

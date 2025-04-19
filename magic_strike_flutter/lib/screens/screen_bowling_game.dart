@@ -53,7 +53,25 @@ class BowlingGameModel {
       // Second throw
       frame.secondThrow = pinsDown;
 
-      // Move to next player (10th frame may have a 3rd throw, but that's handled elsewhere)
+      // In 10th frame, check if player gets bonus throw
+      if (currentFrame == 10) {
+        // If strike or spare in 10th, get one more throw
+        if (frame.firstThrow == 10 ||
+            (frame.firstThrow != null && frame.firstThrow! + pinsDown == 10)) {
+          currentThrow = 3;
+        } else {
+          // No bonus, move to next player
+          _advanceToNextPlayer();
+        }
+      } else {
+        // Not 10th frame, always advance to next player
+        _advanceToNextPlayer();
+      }
+    } else if (currentThrow == 3 && currentFrame == 10) {
+      // Third throw (only in 10th frame)
+      frame.thirdThrow = pinsDown;
+
+      // Move to next player
       _advanceToNextPlayer();
     }
 
@@ -62,16 +80,44 @@ class BowlingGameModel {
   }
 
   void _advanceToNextPlayer() {
-    // Move to the next player
-    currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
+    currentThrow = 1;
 
-    // If we've gone back to the first player, advance to the next frame
-    if (currentPlayerIndex == 0) {
-      currentFrame += 1;
+    // Next player
+    currentPlayerIndex++;
+
+    // If we've gone through all players, advance to the next frame
+    if (currentPlayerIndex >= players.length) {
+      currentPlayerIndex = 0;
+
+      // Only advance the frame if we're not in the 10th frame
+      if (currentFrame < 10) {
+        currentFrame++;
+      }
+
+      // Check if game is complete
+      if (currentFrame >= 10 && _isLastFrameComplete()) {
+        // Game complete - set to invalid index to stop play
+        currentPlayerIndex = players.length;
+      }
+    }
+  }
+
+  bool _isLastFrameComplete() {
+    // If we don't have enough players or frames, game is not complete
+    if (players.isEmpty) return false;
+
+    // Check if all players have completed the 10th frame
+    for (final player in players) {
+      // If player doesn't have 10 frames yet, game is not complete
+      if (player.frames.length < 10) return false;
+
+      // Check if 10th frame is complete
+      final tenthFrame = player.frames[9];
+      if (!tenthFrame.isComplete) return false;
     }
 
-    // Reset to first throw
-    currentThrow = 1;
+    // All players have completed the 10th frame
+    return true;
   }
 
   void _calculateScores() {
@@ -574,12 +620,22 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
             Container(
               alignment: Alignment.centerLeft,
               padding: const EdgeInsets.only(top: 8),
-              child: Text(
-                'Current Player: ${currentPlayer.name}',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.ringPrimary,
+              child: RichText(
+                text: TextSpan(
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black,
+                  ),
+                  children: [
+                    const TextSpan(text: 'Current Player: '),
+                    TextSpan(
+                      text: currentPlayer.name,
+                      style: TextStyle(
+                        color: AppColors.ringPrimary,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             )
@@ -901,6 +957,9 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
                 : Colors.grey,
             foregroundColor: Colors.white,
             minimumSize: const Size.fromHeight(45),
+            elevation: 0,
+            splashFactory: NoSplash.splashFactory,
+            shadowColor: Colors.transparent,
           ),
         ),
 
@@ -924,6 +983,10 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
             child: TextButton(
               onPressed: _cancelFrameEdit,
               child: const Text('Cancel Edit'),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.black,
+                splashFactory: NoSplash.splashFactory,
+              ),
             ),
           ),
       ],
@@ -1001,28 +1064,33 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
             right: 0,
             child: Tooltip(
               message: "Record a gutter ball (0 pins)",
-              child: InkWell(
-                onTap: _recordGutterBall,
-                borderRadius: BorderRadius.circular(20),
-                child: Container(
-                  padding: const EdgeInsets.all(8.0),
-                  decoration: BoxDecoration(
-                    color: Colors.grey[300],
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.cancel_outlined, size: 18),
-                      const SizedBox(width: 4),
-                      const Text(
-                        'Gutter',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: _recordGutterBall,
+                  borderRadius: BorderRadius.circular(20),
+                  splashFactory: NoSplash.splashFactory,
+                  highlightColor: Colors.transparent,
+                  child: Container(
+                    padding: const EdgeInsets.all(8.0),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.cancel_outlined, size: 18),
+                        const SizedBox(width: 4),
+                        const Text(
+                          'Gutter',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -1041,8 +1109,7 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
       padding: const EdgeInsets.all(6.0),
       child: GestureDetector(
         onTap: canSelect ? () => _togglePin(index) : null,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
+        child: Container(
           width: 42,
           height: 42,
           decoration: BoxDecoration(
@@ -1058,15 +1125,6 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
                   : AppColors.ringBackground3rd,
               width: 1.0,
             ),
-            boxShadow: _pinStates[index] || alreadyKnocked
-                ? null
-                : [
-                    BoxShadow(
-                      color: Colors.black.withAlpha(25),
-                      blurRadius: 2,
-                      offset: const Offset(0, 1),
-                    ),
-                  ],
           ),
           child: Center(
             child: Text(
@@ -1189,6 +1247,14 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
     final currentPlayerIndex = _game.currentPlayerIndex;
     final currentPlayer = _game.getCurrentPlayer();
     final currentFrame = _game.currentFrame;
+    final isTenthFrame = currentFrame == 10;
+
+    // Check if this is a spare in the 10th frame
+    bool isSpareInTenth = false;
+    if (isTenthFrame && currentThrow == 2 && currentPlayer != null) {
+      final firstThrow = currentPlayer.frames[9].firstThrow ?? 0;
+      isSpareInTenth = (firstThrow < 10) && (firstThrow + _pinsDown == 10);
+    }
 
     // Save which specific pins were knocked down
     List<bool> knockedPins = List.from(_pinStates);
@@ -1215,22 +1281,74 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
         _remainingPins =
             10 - _previouslyKnockedPins.where((knocked) => knocked).length;
       });
+    } else if (isTenthFrame && currentThrow == 2) {
+      // In 10th frame after second throw
+      setState(() {
+        // Store which specific pins were knocked down in second throw
+        for (int i = 0; i < 10; i++) {
+          if (_pinStates[i]) {
+            _previouslyKnockedPins2[i] = true;
+          }
+        }
+
+        // Reset current pin selection
+        _pinStates = List.generate(10, (_) => false);
+        _pinsDown = 0;
+
+        // If the second throw was a strike OR if player just made a spare,
+        // all pins should be reset (all 10 pins available)
+        if (wasStrike || isSpareInTenth) {
+          _previouslyKnockedPins = List.generate(10, (_) => false);
+          _remainingPins = 10;
+        } else {
+          // Otherwise, combine pins knocked down in both throws
+          for (int i = 0; i < 10; i++) {
+            // If pin was knocked down in first or second throw, it's not available
+            // Special case for 10th frame: if first throw was a strike, only consider second throw
+            if (currentPlayer != null &&
+                currentPlayer.frames[9].firstThrow == 10) {
+              _previouslyKnockedPins[i] = _previouslyKnockedPins2[i];
+            } else {
+              _previouslyKnockedPins[i] =
+                  _previouslyKnockedPins[i] || _previouslyKnockedPins2[i];
+            }
+          }
+
+          // Calculate remaining pins
+          _remainingPins =
+              10 - _previouslyKnockedPins.where((knocked) => knocked).length;
+        }
+      });
     } else {
       // Always reset all pins when:
       // 1. After a strike
-      // 2. After a second throw
-      // 3. For bonus throws in 10th frame
+      // 2. After a second throw (except in 10th frame when not a spare/strike)
+      // 3. After the third throw in 10th frame
       // 4. When moving to a new player
       setState(() {
         _pinStates = List.generate(10, (_) => false);
         _previouslyKnockedPins = List.generate(10, (_) => false);
+        _previouslyKnockedPins2 = List.generate(10, (_) => false);
         _pinsDown = 0;
         _remainingPins = 10;
       });
     }
 
-    // Check if game is complete after this throw
-    if (_isGameComplete()) {
+    // Check for 10th frame third throw specifically
+    if (isTenthFrame && currentThrow == 3) {
+      // After recording third throw, check if all players have finished
+      if (_isGameComplete() && widget.isAdmin) {
+        // Mark the game as completed in Firestore
+        _markGameAsCompleted();
+
+        // Show completion dialog
+        Future.delayed(const Duration(milliseconds: 500), () {
+          _showGameCompleteDialog();
+        });
+      }
+    }
+    // Regular check for game completion (when not in 10th frame)
+    else if (_isGameComplete()) {
       // Mark the game as completed in Firestore
       _markGameAsCompleted();
 
@@ -1316,6 +1434,30 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
         _completeFrameEdit();
       }
     } else if (_selectedEditThrow == 3 && frameIndex == 9) {
+      // For third throw in 10th frame, validate pins if needed
+      final firstThrow = player.frames[frameIndex].firstThrow ?? 0;
+      final secondThrow = player.frames[frameIndex].secondThrow ?? 0;
+
+      // If both first and second throws weren't strikes, validate the pin count
+      if (secondThrow != 10 && firstThrow != 10) {
+        // Calculate how many pins should remain
+        int remainingPins = 10 -
+            (firstThrow == 10 ? 0 : firstThrow) -
+            (secondThrow == 10 ? 0 : secondThrow);
+
+        // If we're trying to knock down more pins than are standing
+        if (_pinsDown > remainingPins) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                  'Invalid throw: Cannot knock down more pins than are standing'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+          return;
+        }
+      }
+
       // For third throw in 10th frame, update and finish
       player.frames[frameIndex].thirdThrow = _pinsDown;
 
@@ -1346,7 +1488,7 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
     if (player == null || !widget.isAdmin) return;
 
     try {
-      // Query for the game document with this room code
+      // Find the game document with this roomId
       final querySnapshot = await FirebaseFirestore.instance
           .collection('games')
           .where('roomId', isEqualTo: widget.gameCode)
@@ -1360,9 +1502,11 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
 
       final gameDoc = querySnapshot.docs.first;
       final gameData = gameDoc.data();
+
+      // Get the players array from the game document
       final List<dynamic> players = List.from(gameData['players'] ?? []);
 
-      // Find the player in the game data
+      // Find the player in the array
       int playerIndex = -1;
       for (int i = 0; i < players.length; i++) {
         if (players[i]['firstName'] == player.name) {
@@ -1372,53 +1516,92 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
       }
 
       if (playerIndex == -1) {
-        print('Error: Player ${player.name} not found in game data');
+        print('Error: Player ${player.name} not found in the game document');
         return;
       }
 
-      // Get the player's throwsPerFrame map
-      final throwsPerFrame =
+      // Update the throw in the player's throwsPerFrame
+      final Map<String, dynamic> throwsPerFrame =
           Map<String, dynamic>.from(players[playerIndex]['throwsPerFrame']);
-      final frameKey = frameNumber.toString();
 
-      // Get the current frame's throws array or create a new one
-      List<dynamic> frameThrows = [];
-      if (throwsPerFrame.containsKey(frameKey)) {
-        frameThrows = List.from(throwsPerFrame[frameKey]);
+      // Frame key is 1-based index as string
+      final String frameKey = frameNumber.toString();
+
+      // Get current throws for this frame
+      List<dynamic> frameThrows = List.from(throwsPerFrame[frameKey] ?? []);
+
+      // Update or add the throw
+      if (throwNumber <= frameThrows.length) {
+        frameThrows[throwNumber - 1] = pinsDown;
+      } else {
+        // Add throw
+        while (frameThrows.length < throwNumber - 1) {
+          frameThrows.add(0); // Pad with 0s if needed
+        }
+        frameThrows.add(pinsDown);
       }
 
-      // Update the throw (arrays are 0-indexed, so throwNumber 1 = index 0)
-      final throwIndex = throwNumber - 1;
-
-      // Ensure the array is large enough
-      while (frameThrows.length <= throwIndex) {
-        frameThrows.add(0);
-      }
-
-      // Update the throw value
-      frameThrows[throwIndex] = pinsDown;
-
-      // Update the throwsPerFrame map
+      // Update throwsPerFrame
       throwsPerFrame[frameKey] = frameThrows;
-
-      // Update the player's throwsPerFrame in the players array
       players[playerIndex]['throwsPerFrame'] = throwsPerFrame;
 
-      // Calculate and update the player's total score
-      if (player.frames.isNotEmpty) {
-        final lastFrameWithScore =
-            player.frames.lastWhere((frame) => frame.score > 0, orElse: () {
-          return BowlingFrame(frameIndex: 0);
-        });
+      // Calculate scores using model methods
+      for (var i = 0; i < players.length; i++) {
+        final currentPlayer = BowlingPlayer(
+          id: players[i]['userId'] ?? players[i]['firstName'],
+          name: players[i]['firstName'],
+          frames: [],
+        );
 
-        players[playerIndex]['totalScore'] = lastFrameWithScore.score;
+        // Convert throwsPerFrame to BowlingFrame objects
+        final Map<String, dynamic> playerThrows =
+            Map<String, dynamic>.from(players[i]['throwsPerFrame'] ?? {});
+
+        for (int frameIndex = 1; frameIndex <= 10; frameIndex++) {
+          final String fKey = frameIndex.toString();
+          final List<dynamic> fThrows = List.from(playerThrows[fKey] ?? []);
+
+          final frame = BowlingFrame(frameIndex: frameIndex - 1);
+          if (fThrows.isNotEmpty && fThrows.length >= 1) {
+            frame.firstThrow = fThrows[0];
+          }
+          if (fThrows.isNotEmpty && fThrows.length >= 2) {
+            frame.secondThrow = fThrows[1];
+          }
+          if (fThrows.isNotEmpty && fThrows.length >= 3 && frameIndex == 10) {
+            frame.thirdThrow = fThrows[2];
+          }
+
+          currentPlayer.frames.add(frame);
+        }
+
+        // Calculate scores for this player
+        _calculateScoresForPlayer(currentPlayer);
+
+        // Update totalScore in the Firestore data
+        if (player.frames.isNotEmpty) {
+          final lastFrameWithScore =
+              player.frames.lastWhere((frame) => frame.score > 0, orElse: () {
+            return BowlingFrame(frameIndex: 0);
+          });
+
+          players[playerIndex]['totalScore'] = lastFrameWithScore.score;
+        }
+      }
+
+      // Ensure currentFrame never exceeds 10
+      int updatedCurrentFrame = _game.currentFrame;
+      if (updatedCurrentFrame > 10) {
+        updatedCurrentFrame = 10;
       }
 
       // Create the updated game data with current game state
       final Map<String, dynamic> updatedGameData = {
         'players': players,
-        'currentFrame': _game.currentFrame,
-        'currentPlayerIndex': _game.currentPlayerIndex,
+        'currentFrame': updatedCurrentFrame,
+        'currentPlayerIndex': _game.currentPlayerIndex >= _game.players.length
+            ? 0
+            : _game.currentPlayerIndex,
         'currentThrow': _game.currentThrow,
       };
 
@@ -1657,6 +1840,43 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
       _pinStates = List.generate(10, (_) => false);
       _pinsDown = 0;
       _selectedEditThrow = 3;
+
+      // Calculate remaining pins for the third throw
+      if (_selectedEditPlayer != null && _selectedEditFrame != null) {
+        final frame = _selectedEditPlayer!.frames[_selectedEditFrame! - 1];
+        final firstThrow = frame.firstThrow ?? 0;
+        final secondThrow = frame.secondThrow ?? 0;
+
+        // For the 10th frame:
+        // 1. If first throw was a strike, the second throw resets all pins
+        // 2. If second throw was a strike, reset all pins for third throw
+        // 3. If first+second is a spare (sum to 10), reset all pins for third throw
+
+        // Case: after a spare or if second throw was a strike
+        if (secondThrow == 10 ||
+            (firstThrow != 10 && firstThrow + secondThrow == 10)) {
+          // Reset all pins for third throw
+          _previouslyKnockedPins = List.generate(10, (_) => false);
+          _remainingPins = 10;
+        }
+        // Case: second throw wasn't a strike and player didn't make a spare
+        else if (secondThrow != 10) {
+          // If first throw was a strike, only consider pins from second throw
+          if (firstThrow == 10) {
+            _previouslyKnockedPins = List.from(_previouslyKnockedPins2);
+          } else {
+            // Otherwise combine pins from both throws
+            for (int i = 0; i < 10; i++) {
+              _previouslyKnockedPins[i] =
+                  _previouslyKnockedPins[i] || _previouslyKnockedPins2[i];
+            }
+          }
+
+          // Calculate remaining pins for the third throw
+          _remainingPins =
+              10 - _previouslyKnockedPins.where((knocked) => knocked).length;
+        }
+      }
     });
   }
 
@@ -1841,6 +2061,10 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.black,
+                splashFactory: NoSplash.splashFactory,
+              ),
               child: const Text('Close'),
             ),
             ElevatedButton(
@@ -1870,6 +2094,9 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.ringPrimary,
                 foregroundColor: Colors.white,
+                elevation: 0,
+                splashFactory: NoSplash.splashFactory,
+                shadowColor: Colors.transparent,
               ),
               child: isSaving
                   ? const SizedBox(
@@ -1944,6 +2171,9 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
         throw Exception('Failed to save game');
       }
 
+      // Delete the original live game document once it's saved
+      await _deleteLiveGameDocument();
+
       // Close dialog
       if (mounted) {
         // ignore: use_build_context_synchronously
@@ -1973,6 +2203,33 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
     }
   }
 
+  // Helper method to delete the live game document from Firestore
+  Future<void> _deleteLiveGameDocument() async {
+    try {
+      // Find the game document with this room code
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('games')
+          .where('roomId', isEqualTo: widget.gameCode)
+          .limit(1)
+          .get();
+
+      if (querySnapshot.docs.isEmpty) {
+        print(
+            'No live game document found to delete for roomId: ${widget.gameCode}');
+        return;
+      }
+
+      final gameDoc = querySnapshot.docs.first;
+
+      // Delete the document
+      await gameDoc.reference.delete();
+      print(
+          'Successfully deleted live game document for roomId: ${widget.gameCode}');
+    } catch (e) {
+      print('Error deleting live game document: $e');
+    }
+  }
+
   void _showGameInfo() {
     showDialog(
       context: context,
@@ -1995,6 +2252,10 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.black,
+              splashFactory: NoSplash.splashFactory,
+            ),
             child: const Text('Close'),
           ),
         ],
@@ -2019,34 +2280,103 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
           context: context,
           builder: (context) => AlertDialog(
             title: const Text('Exit Game?'),
-            content: const Text(
-                'If you exit this screen, you won\'t be able to contribute further to this game and following frames will be counted as not thrown.'),
+            content: widget.isAdmin
+                ? const Text(
+                    'If you exit this screen as the room owner, the game will end for all players. Make sure you have saved the game before exiting if you want to keep the scores.')
+                : const Text(
+                    'If you exit this screen, you won\'t be able to contribute further to this game and following frames will be counted as not thrown.'),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(context).pop(false),
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.black,
+                  splashFactory: NoSplash.splashFactory,
+                ),
                 child: const Text('Stay'),
               ),
               ElevatedButton(
                 onPressed: () => Navigator.of(context).pop(true),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.ringPrimary,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  splashFactory: NoSplash.splashFactory,
+                  shadowColor: Colors.transparent,
                 ),
-                child: const Text('Leave Game'),
+                child: widget.isAdmin
+                    ? const Text('Exit & End Game')
+                    : const Text('Leave Game'),
               ),
             ],
           ),
         ) ??
         false; // Default to false (don't exit) if dialog is dismissed
 
-    // If user confirmed leaving, remove them from the game
-    if (confirmed && !widget.isAdmin) {
-      try {
-        await _firestoreService.removePlayerFromGame(widget.gameCode);
-      } catch (e) {
-        print('Error removing player from game: $e');
+    if (confirmed) {
+      // If admin/room owner is leaving, delete the game document
+      if (widget.isAdmin) {
+        try {
+          // Check if the game is complete first
+          final isComplete = _isGameComplete();
+
+          // If game is complete, delete the live document as we assume it's already been saved
+          if (isComplete) {
+            await _deleteLiveGameDocument();
+          } else {
+            // If game isn't complete, show a warning dialog
+            final shouldDeleteGame = await _showUnsavedGameWarning();
+            if (shouldDeleteGame) {
+              await _deleteLiveGameDocument();
+            }
+          }
+        } catch (e) {
+          print('Error cleaning up game document: $e');
+        }
+      }
+      // If regular player is leaving, just remove them
+      else if (!widget.isAdmin) {
+        try {
+          await _firestoreService.removePlayerFromGame(widget.gameCode);
+        } catch (e) {
+          print('Error removing player from game: $e');
+        }
       }
     }
 
     return confirmed;
+  }
+
+  // Warning dialog shown when admin tries to exit an incomplete game
+  Future<bool> _showUnsavedGameWarning() async {
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Game Not Complete'),
+            content: const Text(
+                'This game is not complete yet. If you exit now without saving, all game progress will be lost. Do you want to continue and delete the game?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.black,
+                  splashFactory: NoSplash.splashFactory,
+                ),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  splashFactory: NoSplash.splashFactory,
+                  shadowColor: Colors.transparent,
+                ),
+                child: const Text('Delete Game'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
   }
 }

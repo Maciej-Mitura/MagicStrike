@@ -429,4 +429,32 @@ class FirestoreService {
       return false;
     }
   }
+
+  /// Delete a game document by room ID (used when a game is saved or abandoned)
+  Future<bool> deleteGameByRoomId(String roomID) async {
+    try {
+      // Find the game document with this roomId
+      final QuerySnapshot gamesQuery = await _firestore
+          .collection('games')
+          .where('roomId', isEqualTo: roomID)
+          .limit(1)
+          .get();
+
+      if (gamesQuery.docs.isEmpty) {
+        print('Game not found with roomId: $roomID');
+        return false;
+      }
+
+      final gameDoc = gamesQuery.docs.first;
+
+      // Delete the document
+      await gameDoc.reference.delete();
+      print('Successfully deleted game with roomId: $roomID');
+
+      return true;
+    } catch (e) {
+      print('Error deleting game: $e');
+      return false;
+    }
+  }
 }

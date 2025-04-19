@@ -14,7 +14,7 @@ import 'firebase_options.dart'; // if using FlutterFire CLI
 
 // Create a global key to access the HomePage state
 final GlobalKey<HomePageState> homePageKey = GlobalKey<HomePageState>();
-s
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
