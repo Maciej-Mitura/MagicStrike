@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:magic_strike_flutter/constants/app_colors.dart';
 import 'package:magic_strike_flutter/screens/screen_bowling_game.dart';
+import 'package:magic_strike_flutter/services/firestore_service.dart';
+import 'package:magic_strike_flutter/services/user_service.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class JoinGameScreen extends StatefulWidget {
   const JoinGameScreen({super.key});
@@ -11,11 +14,27 @@ class JoinGameScreen extends StatefulWidget {
 
 class _JoinGameScreenState extends State<JoinGameScreen> {
   final TextEditingController _codeController = TextEditingController();
-  // This would come from Firebase in the future
-  final String _playerName = "User123";
+  String _playerName = "User123"; // This will be updated with actual user data
+  String? _deRingID; // Store user's ID
   final _formKey = GlobalKey<FormState>();
   bool _isJoining = false;
   String? _errorMessage;
+  final FirestoreService _firestoreService = FirestoreService();
+  final UserService _userService = UserService();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    final userData = await _userService.getCurrentUserData();
+    setState(() {
+      _playerName = userData['firstName'] ?? 'User123';
+      _deRingID = userData['deRingID'];
+    });
+  }
 
   @override
   void dispose() {
@@ -23,41 +42,95 @@ class _JoinGameScreenState extends State<JoinGameScreen> {
     super.dispose();
   }
 
-  void _joinGame() {
+  Future<void> _joinGame() async {
     if (_formKey.currentState!.validate()) {
       setState(() {
         _isJoining = true;
         _errorMessage = null;
       });
 
-      // Get room code
-      final roomCode = _codeController.text.trim();
+      try {
+        // Make sure we have user data
+        if (_deRingID == null) {
+          throw Exception('User data not available');
+        }
 
-      // Simulate checking if the room exists (in a real app, this would connect to backend)
-      Future.delayed(const Duration(milliseconds: 800), () {
-        if (!mounted) return;
-        // For demo, accept any 6-digit code
-        if (roomCode.length == 6 && int.tryParse(roomCode) != null) {
-          // Navigate to game screen as non-admin
+        // Get room code
+        final roomCode = _codeController.text.trim();
+
+        // Check if the game exists
+        final QuerySnapshot gameQuery = await FirebaseFirestore.instance
+            .collection('games')
+            .where('roomId', isEqualTo: roomCode)
+            .limit(1)
+            .get();
+
+        if (gameQuery.docs.isEmpty) {
+          throw Exception('Game not found');
+        }
+
+        // Add player to the game
+        final success = await _firestoreService.addPlayerToGameRoom(
+          roomCode,
+          _playerName,
+        );
+
+        if (!success) {
+          throw Exception('Failed to join game');
+        }
+
+        // Get updated game data
+        final updatedGameQuery = await FirebaseFirestore.instance
+            .collection('games')
+            .where('roomId', isEqualTo: roomCode)
+            .limit(1)
+            .get();
+
+        if (updatedGameQuery.docs.isEmpty) {
+          throw Exception('Could not retrieve updated game data');
+        }
+
+        final gameDoc = updatedGameQuery.docs.first;
+        final gameData = gameDoc.data();
+
+        // Extract player names from the game data
+        final List<dynamic> gamePlayers = gameData['players'] ?? [];
+        final List<String> playerNames = gamePlayers
+            .map<String>((player) => player['firstName'] as String)
+            .toList();
+
+        // Navigate to game screen as non-admin
+        if (mounted) {
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
               builder: (context) => BowlingGameScreen(
                 gameCode: roomCode,
-                players: [
-                  _playerName
-                ], // We only know our own name when joining
+                players: playerNames, // Use all players from the game
                 isAdmin: false,
               ),
             ),
           );
-        } else {
+        }
+      } catch (e) {
+        print('Error joining game: $e');
+        if (mounted) {
           setState(() {
             _isJoining = false;
-            _errorMessage = 'Game room not found. Please check the code.';
+            if (e.toString().contains('not found')) {
+              _errorMessage = 'Game not found. Please check the code.';
+            } else if (e.toString().contains('already started')) {
+              _errorMessage =
+                  'This game has already started and cannot be joined.';
+            } else if (e.toString().contains('Room is full')) {
+              _errorMessage =
+                  'This game room is full and cannot accept more players.';
+            } else {
+              _errorMessage = 'Error joining game: ${e.toString()}';
+            }
           });
         }
-      });
+      }
     }
   }
 
@@ -118,13 +191,23 @@ class _JoinGameScreenState extends State<JoinGameScreen> {
                         keyboardType: TextInputType.number,
                         textAlign: TextAlign.center,
                         maxLength: 6,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 24,
                           fontWeight: FontWeight.bold,
                           letterSpacing: 8,
+                          color: AppColors.ringPrimary,
                         ),
                         decoration: InputDecoration(
                           labelText: 'Game Room Code',
+                          labelStyle: const TextStyle(color: Colors.grey),
+                          floatingLabelStyle: WidgetStateTextStyle.resolveWith(
+                            (Set<WidgetState> states) {
+                              if (states.contains(WidgetState.focused)) {
+                                return TextStyle(color: AppColors.ringPrimary);
+                              }
+                              return const TextStyle(color: Colors.grey);
+                            },
+                          ),
                           counterText: '',
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
@@ -139,6 +222,16 @@ class _JoinGameScreenState extends State<JoinGameScreen> {
                           filled: true,
                           fillColor: Colors.grey[50],
                         ),
+                        cursorColor: AppColors.ringPrimary,
+                        // Update the style when field gets focus
+                        onTap: () {
+                          setState(() {
+                            _codeController.selection = TextSelection(
+                              baseOffset: 0,
+                              extentOffset: _codeController.text.length,
+                            );
+                          });
+                        },
                         validator: (value) {
                           if (value == null || value.isEmpty) {
                             return 'Please enter the room code';
@@ -172,8 +265,9 @@ class _JoinGameScreenState extends State<JoinGameScreen> {
                               child: Text(
                                 _playerName, // From the user profile
                                 style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
+                                  fontWeight: FontWeight.normal,
                                   fontSize: 16,
+                                  color: Colors.grey,
                                 ),
                               ),
                             ),

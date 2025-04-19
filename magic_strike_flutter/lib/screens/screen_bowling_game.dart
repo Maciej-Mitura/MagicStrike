@@ -1,7 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:magic_strike_flutter/constants/app_colors.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/user_service.dart';
 import '../services/firestore_service.dart';
+import 'package:collection/collection.dart';
 
 // Temporary model classes until we have the real implementation
 class BowlingGameModel {
@@ -50,25 +53,7 @@ class BowlingGameModel {
       // Second throw
       frame.secondThrow = pinsDown;
 
-      // In 10th frame, check if player gets bonus throw
-      if (currentFrame == 10) {
-        // If strike in first throw or spare, get one more throw
-        if (frame.firstThrow == 10 ||
-            (frame.firstThrow != null && frame.firstThrow! + pinsDown == 10)) {
-          currentThrow = 3;
-        } else {
-          // No bonus, move to next player
-          _advanceToNextPlayer();
-        }
-      } else {
-        // Not 10th frame, always advance to next player
-        _advanceToNextPlayer();
-      }
-    } else if (currentThrow == 3 && currentFrame == 10) {
-      // Third throw (only in 10th frame)
-      frame.thirdThrow = pinsDown;
-
-      // Move to next player
+      // Move to next player (10th frame may have a 3rd throw, but that's handled elsewhere)
       _advanceToNextPlayer();
     }
 
@@ -77,97 +62,73 @@ class BowlingGameModel {
   }
 
   void _advanceToNextPlayer() {
-    currentThrow = 1;
+    // Move to the next player
+    currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
 
-    // Next player
-    currentPlayerIndex++;
-
-    // If we've gone through all players, advance to the next frame
-    if (currentPlayerIndex >= players.length) {
-      currentPlayerIndex = 0;
-      currentFrame++;
-
-      // Check if game is complete
-      if (currentFrame > 10) {
-        // Game complete
-        currentFrame = 10;
-        currentPlayerIndex = players.length; // Set to invalid index
-      }
+    // If we've gone back to the first player, advance to the next frame
+    if (currentPlayerIndex == 0) {
+      currentFrame += 1;
     }
+
+    // Reset to first throw
+    currentThrow = 1;
   }
 
   void _calculateScores() {
+    // Calculate scores for each player
     for (final player in players) {
+      // Calculate running score for all frames
       int totalScore = 0;
 
       for (int i = 0; i < player.frames.length; i++) {
         final frame = player.frames[i];
         int frameScore = 0;
 
-        // Add base points from this frame
+        // Only calculate completed frames
+        if (!frame.isComplete) continue;
+
+        // Add pins knocked down in this frame
         if (frame.firstThrow != null) {
           frameScore += frame.firstThrow!;
         }
         if (frame.secondThrow != null) {
           frameScore += frame.secondThrow!;
         }
-
-        // In 10th frame, add third throw if it exists
-        if (i == 9 && frame.thirdThrow != null) {
+        if (frame.thirdThrow != null) {
           frameScore += frame.thirdThrow!;
         }
 
-        // Add bonus points for strikes and spares (except in 10th frame)
-        if (i < 9) {
-          // Strike bonus: next two rolls
-          if (frame.isStrike) {
-            // Look ahead for next two rolls
-            int bonusPinsFound = 0;
-            int bonusPoints = 0;
+        // Add bonus for strikes and spares
+        if (frame.isStrike && i < 9) {
+          // Strike bonus: Next two throws
+          int throwsToAdd = 2;
+          int nextFrameIndex = i + 1;
 
-            // Look in next frame(s)
-            for (int j = i + 1;
-                j < player.frames.length && bonusPinsFound < 2;
-                j++) {
-              final nextFrame = player.frames[j];
+          while (throwsToAdd > 0 && nextFrameIndex < player.frames.length) {
+            final nextFrame = player.frames[nextFrameIndex];
 
-              // First throw
-              if (nextFrame.firstThrow != null && bonusPinsFound < 2) {
-                bonusPoints += nextFrame.firstThrow!;
-                bonusPinsFound++;
-
-                // If strike and need one more bonus, continue to next frame
-                if (nextFrame.firstThrow == 10 && bonusPinsFound < 2 && j < 9) {
-                  continue;
-                }
-              }
-
-              // Second throw (if needed)
-              if (nextFrame.secondThrow != null && bonusPinsFound < 2) {
-                bonusPoints += nextFrame.secondThrow!;
-                bonusPinsFound++;
-              }
-
-              // Third throw in 10th frame (if needed)
-              if (j == 9 &&
-                  nextFrame.thirdThrow != null &&
-                  bonusPinsFound < 2) {
-                bonusPoints += nextFrame.thirdThrow!;
-                bonusPinsFound++;
-              }
+            if (nextFrame.firstThrow != null) {
+              frameScore += nextFrame.firstThrow!;
+              throwsToAdd--;
             }
 
-            frameScore += bonusPoints;
+            if (throwsToAdd > 0 && nextFrame.secondThrow != null) {
+              frameScore += nextFrame.secondThrow!;
+              throwsToAdd--;
+            }
+
+            if (throwsToAdd > 0) {
+              nextFrameIndex++;
+            }
           }
-          // Spare bonus: next roll
-          else if (frame.isSpare) {
-            // Look ahead for next roll
-            for (int j = i + 1; j < player.frames.length; j++) {
-              final nextFrame = player.frames[j];
-              if (nextFrame.firstThrow != null) {
-                frameScore += nextFrame.firstThrow!;
-                break;
-              }
+        } else if (frame.isSpare && i < 9) {
+          // Spare bonus: Next one throw
+          int nextFrameIndex = i + 1;
+
+          if (nextFrameIndex < player.frames.length) {
+            final nextFrame = player.frames[nextFrameIndex];
+            if (nextFrame.firstThrow != null) {
+              frameScore += nextFrame.firstThrow!;
             }
           }
         }
@@ -271,31 +232,195 @@ class BowlingGameScreen extends StatefulWidget {
 
 class _BowlingGameScreenState extends State<BowlingGameScreen> {
   late BowlingGameModel _game;
+  late FirestoreService _firestoreService;
+  late UserService _userService;
+
+  // For real-time updates
+  StreamSubscription<QuerySnapshot>? _gameDocSubscription;
+  List<Map<String, dynamic>> _gamePlayers = [];
 
   // For tracking pins in current throw
   List<bool> _pinStates = List.generate(10, (_) => false);
   List<bool> _previouslyKnockedPins = List.generate(10, (_) => false);
+  List<bool> _previouslyKnockedPins2 = List.generate(10, (_) => false);
   int _pinsDown = 0;
   int _remainingPins = 10; // Track how many pins are remaining
 
   // For editing frames
   int? _selectedFrameIndex;
   String? _selectedPlayerId;
+  int _selectedEditThrow = 1;
 
   // Add this variable to track the last player index
   int _lastPlayerIndex = -1;
+
+  // Helper properties for frame editing
+  int? get _selectedEditFrame => _selectedFrameIndex;
+  BowlingPlayer? get _selectedEditPlayer =>
+      _game.players.firstWhereOrNull((p) => p.id == _selectedPlayerId);
 
   @override
   void initState() {
     super.initState();
 
-    // Initialize game with players
+    _firestoreService = FirestoreService();
+    _userService = UserService();
+
+    // Initialize game with initial players
     _game = BowlingGameModel(
       roomCode: widget.gameCode,
-      players: widget.players
-          .map((name) => BowlingPlayer(id: name, name: name, frames: []))
-          .toList(),
+      players: widget.players.map((name) {
+        // Create player with 10 empty frames
+        final player = BowlingPlayer(id: name, name: name, frames: []);
+
+        // Initialize all 10 frames
+        for (int i = 0; i < 10; i++) {
+          player.frames.add(BowlingFrame(frameIndex: i));
+        }
+
+        return player;
+      }).toList(),
     );
+
+    // Listen for game updates
+    _listenForGameUpdates();
+  }
+
+  @override
+  void dispose() {
+    _gameDocSubscription?.cancel();
+    super.dispose();
+  }
+
+  void _listenForGameUpdates() {
+    // Listen for updates to the game document
+    _gameDocSubscription = FirebaseFirestore.instance
+        .collection('games')
+        .where('roomId', isEqualTo: widget.gameCode)
+        .limit(1)
+        .snapshots()
+        .listen((snapshot) {
+      if (snapshot.docs.isEmpty) return;
+
+      final gameDoc = snapshot.docs.first;
+      final gameData = gameDoc.data();
+
+      // Get the players array from the game document
+      final List<dynamic> players = gameData['players'] ?? [];
+
+      // Extract player names to update the game model
+      final playerNames = players
+          .map<String>((player) => player['firstName'] as String)
+          .toList();
+
+      if (mounted) {
+        setState(() {
+          // Update game players list for UI
+          _gamePlayers = players
+              .map<Map<String, dynamic>>((p) => Map<String, dynamic>.from(p))
+              .toList();
+
+          // Update the game model with the new players if needed
+          if (playerNames.isNotEmpty) {
+            if (playerNames.length != _game.players.length) {
+              // Players list changed - create a new game model
+              _game = BowlingGameModel(
+                roomCode: widget.gameCode,
+                players: playerNames
+                    .map((name) =>
+                        BowlingPlayer(id: name, name: name, frames: []))
+                    .toList(),
+              );
+              print('Updated game players: ${playerNames.join(", ")}');
+            }
+
+            // Update player frames from Firestore data
+            _updatePlayerFramesFromFirestore(players);
+
+            // Update current frame and current player information
+            if (gameData.containsKey('currentFrame')) {
+              _game.currentFrame = gameData['currentFrame'] ?? 1;
+            }
+
+            if (gameData.containsKey('currentPlayerIndex')) {
+              _game.currentPlayerIndex = gameData['currentPlayerIndex'] ?? 0;
+            }
+
+            if (gameData.containsKey('currentThrow')) {
+              _game.currentThrow = gameData['currentThrow'] ?? 1;
+            }
+
+            // Check if game is marked as completed
+            final String gameStatus = gameData['status'] ?? 'waiting';
+            if (gameStatus == 'completed' && widget.isAdmin) {
+              // Alert the admin that the game is complete
+              if (!_isGameComplete()) {
+                // Only show this once when status changes to completed
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                        'This game has been marked as completed. No more throws can be recorded.'),
+                    backgroundColor: Colors.orange,
+                    duration: Duration(seconds: 5),
+                  ),
+                );
+              }
+            }
+          }
+        });
+      }
+    });
+  }
+
+  void _updatePlayerFramesFromFirestore(List<dynamic> playersData) {
+    // For each player in our game model
+    for (final player in _game.players) {
+      // Find matching player data in Firestore
+      final playerData = playersData.firstWhere(
+        (p) => p['firstName'] == player.name,
+        orElse: () => {},
+      );
+
+      if (playerData.isNotEmpty) {
+        // Get throwsPerFrame data
+        final Map<String, dynamic> throwsPerFrame =
+            Map<String, dynamic>.from(playerData['throwsPerFrame'] ?? {});
+
+        // Clear existing frames data to ensure a fresh start
+        player.frames.clear();
+
+        // For each frame (1 to 10)
+        for (int frameIndex = 1; frameIndex <= 10; frameIndex++) {
+          final String frameKey = frameIndex.toString();
+          final List<dynamic> frameThrows =
+              List.from(throwsPerFrame[frameKey] ?? []);
+
+          // Create a new bowling frame
+          final frame = BowlingFrame(frameIndex: frameIndex - 1);
+
+          // Set throw values if they exist
+          if (frameThrows.isNotEmpty && frameThrows.length >= 1) {
+            frame.firstThrow = frameThrows[0];
+          }
+
+          if (frameThrows.isNotEmpty && frameThrows.length >= 2) {
+            frame.secondThrow = frameThrows[1];
+          }
+
+          if (frameThrows.isNotEmpty &&
+              frameThrows.length >= 3 &&
+              frameIndex == 10) {
+            frame.thirdThrow = frameThrows[2];
+          }
+
+          // Add the frame to the player
+          player.frames.add(frame);
+        }
+      }
+    }
+
+    // Calculate scores after updating frames
+    _game._calculateScores();
   }
 
   @override
@@ -311,56 +436,75 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
       _lastPlayerIndex = _game.currentPlayerIndex;
     }
 
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: AppColors.ringPrimary,
-        foregroundColor: Colors.white,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Game Room: ${widget.gameCode}'),
-            Text(
-              widget.isAdmin ? 'You are the scorekeeper' : 'View only mode',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.normal,
+    return WillPopScope(
+      onWillPop: () async {
+        // Show confirmation dialog when user tries to exit
+        final shouldPop = await _showExitConfirmation();
+        return shouldPop;
+      },
+      child: Scaffold(
+        backgroundColor: Colors.white,
+        appBar: AppBar(
+          backgroundColor: AppColors.ringPrimary,
+          foregroundColor: Colors.white,
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Game Room: ${widget.gameCode}'),
+              Text(
+                widget.isAdmin ? 'You are the scorekeeper' : 'View only mode',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.normal,
+                ),
               ),
+            ],
+          ),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.info_outline),
+              onPressed: () => _showGameInfo(),
             ),
           ],
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.info_outline),
-            onPressed: () => _showGameInfo(),
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          // Scoreboard section
-          Expanded(
-            child: SingleChildScrollView(
-              child: Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: _buildScoreboard(),
-              ),
-            ),
-          ),
-
-          // Pin input section
-          if (widget.isAdmin)
-            Container(
-              padding: const EdgeInsets.all(16.0),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                border: Border(
-                  top: BorderSide(color: Colors.grey[300]!),
+        body: Column(
+          children: [
+            // Display number of players joined
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Text(
+                'Players joined: ${_game.players.length}',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
                 ),
               ),
-              child: _buildPinInputSection(),
             ),
-        ],
+
+            // Scoreboard section
+            Expanded(
+              child: SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: _buildScoreboard(),
+                ),
+              ),
+            ),
+
+            // Pin input section
+            if (widget.isAdmin)
+              Container(
+                padding: const EdgeInsets.all(16.0),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  border: Border(
+                    top: BorderSide(color: Colors.grey[300]!),
+                  ),
+                ),
+                child: _buildPinInputSection(),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -969,11 +1113,69 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
     setState(() {
       _selectedFrameIndex = null;
       _selectedPlayerId = null;
+      _selectedEditThrow = 1;
       _resetPins();
     });
   }
 
+  bool _isGameComplete() {
+    // The game is complete when all players have finished all their frames
+    for (final player in _game.players) {
+      // Check if player has 10 frames
+      if (player.frames.length < 10) {
+        return false;
+      }
+
+      // Check if all frames are complete, especially the 10th frame
+      final tenthFrame = player.frames[9];
+      if (!tenthFrame.isComplete) {
+        return false;
+      }
+    }
+
+    // All players have completed all frames
+    return true;
+  }
+
+  // Update the game status to 'completed' in Firestore
+  Future<void> _markGameAsCompleted() async {
+    if (!widget.isAdmin) return;
+
+    try {
+      // Find the game document with this room code
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('games')
+          .where('roomId', isEqualTo: widget.gameCode)
+          .limit(1)
+          .get();
+
+      if (querySnapshot.docs.isEmpty) {
+        print('Error: Game document not found for roomId: ${widget.gameCode}');
+        return;
+      }
+
+      final gameDoc = querySnapshot.docs.first;
+
+      // Set status to 'completed'
+      await gameDoc.reference.update({'status': 'completed'});
+      print('Game marked as completed');
+    } catch (e) {
+      print('Error marking game as completed: $e');
+    }
+  }
+
   void _submitThrow() {
+    // Check if the game is already complete
+    if (_isGameComplete()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Game is complete. No more throws can be recorded.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
     if (_selectedFrameIndex != null && _selectedPlayerId != null) {
       // Editing an existing frame
       _submitEditedFrame();
@@ -984,12 +1186,19 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
     final currentThrow = _game.currentThrow;
     final isFirstThrow = currentThrow == 1;
     final wasStrike = _pinsDown == 10;
+    final currentPlayerIndex = _game.currentPlayerIndex;
+    final currentPlayer = _game.getCurrentPlayer();
+    final currentFrame = _game.currentFrame;
 
     // Save which specific pins were knocked down
     List<bool> knockedPins = List.from(_pinStates);
 
     // Record the throw in the game
     _game.recordThrow(_pinsDown);
+
+    // Update the throw in Firestore database
+    _updateThrowInFirestore(
+        currentPlayer, currentFrame, currentThrow, _pinsDown);
 
     if (isFirstThrow && !wasStrike) {
       // First throw that wasn't a strike - mark pins as knocked down for the second throw
@@ -1020,20 +1229,44 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
       });
     }
 
-    // Check if game is complete
-    final isGameComplete = _game.currentPlayerIndex >= _game.players.length;
+    // Check if game is complete after this throw
+    if (_isGameComplete()) {
+      // Mark the game as completed in Firestore
+      _markGameAsCompleted();
 
-    // Show completion dialog if game is finished
-    if (isGameComplete && widget.isAdmin) {
-      Future.delayed(const Duration(milliseconds: 500), () {
-        _showGameCompleteDialog();
-      });
+      // Show completion dialog if game is finished
+      if (widget.isAdmin) {
+        Future.delayed(const Duration(milliseconds: 500), () {
+          _showGameCompleteDialog();
+        });
+      } else {
+        // Show a message for non-admin players
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content:
+                Text('Game complete! All players have finished their frames.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
     }
 
     setState(() {});
   }
 
   void _submitEditedFrame() {
+    // Check if the game is already complete
+    if (_isGameComplete()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Game is complete. No more edits can be made.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      _cancelFrameEdit();
+      return;
+    }
+
     if (_selectedFrameIndex == null || _selectedPlayerId == null) return;
 
     final frameIndex = _selectedFrameIndex!;
@@ -1053,6 +1286,9 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
       // For first throw, update and prepare for second throw
       player.frames[frameIndex].firstThrow = _pinsDown;
 
+      // Update in Firestore
+      _updateEditedFrameInFirestore(player, frameIndex + 1, 1, _pinsDown);
+
       // If strike in a normal frame, we're done
       if (_pinsDown == 10 && frameIndex < 9) {
         player.frames[frameIndex].secondThrow = null;
@@ -1065,6 +1301,9 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
     } else if (_selectedEditThrow == 2) {
       // For second throw, update and finish (except 10th frame)
       player.frames[frameIndex].secondThrow = _pinsDown;
+
+      // Update in Firestore
+      _updateEditedFrameInFirestore(player, frameIndex + 1, 2, _pinsDown);
 
       // In 10th frame with strike or spare, setup for third throw
       if (frameIndex == 9 &&
@@ -1079,11 +1318,314 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
     } else if (_selectedEditThrow == 3 && frameIndex == 9) {
       // For third throw in 10th frame, update and finish
       player.frames[frameIndex].thirdThrow = _pinsDown;
+
+      // Update in Firestore
+      _updateEditedFrameInFirestore(player, frameIndex + 1, 3, _pinsDown);
+
       _completeFrameEdit();
     }
 
     // Recalculate scores
     _game._calculateScores();
+
+    // Check if game is complete after this edit
+    if (_isGameComplete() && widget.isAdmin) {
+      // Mark the game as completed in Firestore
+      _markGameAsCompleted();
+
+      // Show completion dialog
+      Future.delayed(const Duration(milliseconds: 500), () {
+        _showGameCompleteDialog();
+      });
+    }
+  }
+
+  // Method to update throw in Firestore
+  Future<void> _updateThrowInFirestore(BowlingPlayer? player, int frameNumber,
+      int throwNumber, int pinsDown) async {
+    if (player == null || !widget.isAdmin) return;
+
+    try {
+      // Query for the game document with this room code
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('games')
+          .where('roomId', isEqualTo: widget.gameCode)
+          .limit(1)
+          .get();
+
+      if (querySnapshot.docs.isEmpty) {
+        print('Error: Game document not found for roomId: ${widget.gameCode}');
+        return;
+      }
+
+      final gameDoc = querySnapshot.docs.first;
+      final gameData = gameDoc.data();
+      final List<dynamic> players = List.from(gameData['players'] ?? []);
+
+      // Find the player in the game data
+      int playerIndex = -1;
+      for (int i = 0; i < players.length; i++) {
+        if (players[i]['firstName'] == player.name) {
+          playerIndex = i;
+          break;
+        }
+      }
+
+      if (playerIndex == -1) {
+        print('Error: Player ${player.name} not found in game data');
+        return;
+      }
+
+      // Get the player's throwsPerFrame map
+      final throwsPerFrame =
+          Map<String, dynamic>.from(players[playerIndex]['throwsPerFrame']);
+      final frameKey = frameNumber.toString();
+
+      // Get the current frame's throws array or create a new one
+      List<dynamic> frameThrows = [];
+      if (throwsPerFrame.containsKey(frameKey)) {
+        frameThrows = List.from(throwsPerFrame[frameKey]);
+      }
+
+      // Update the throw (arrays are 0-indexed, so throwNumber 1 = index 0)
+      final throwIndex = throwNumber - 1;
+
+      // Ensure the array is large enough
+      while (frameThrows.length <= throwIndex) {
+        frameThrows.add(0);
+      }
+
+      // Update the throw value
+      frameThrows[throwIndex] = pinsDown;
+
+      // Update the throwsPerFrame map
+      throwsPerFrame[frameKey] = frameThrows;
+
+      // Update the player's throwsPerFrame in the players array
+      players[playerIndex]['throwsPerFrame'] = throwsPerFrame;
+
+      // Calculate and update the player's total score
+      if (player.frames.isNotEmpty) {
+        final lastFrameWithScore =
+            player.frames.lastWhere((frame) => frame.score > 0, orElse: () {
+          return BowlingFrame(frameIndex: 0);
+        });
+
+        players[playerIndex]['totalScore'] = lastFrameWithScore.score;
+      }
+
+      // Create the updated game data with current game state
+      final Map<String, dynamic> updatedGameData = {
+        'players': players,
+        'currentFrame': _game.currentFrame,
+        'currentPlayerIndex': _game.currentPlayerIndex,
+        'currentThrow': _game.currentThrow,
+      };
+
+      // Update the game document in Firestore
+      await gameDoc.reference.update(updatedGameData);
+
+      print(
+          'Successfully updated ${player.name}\'s throw in frame $frameNumber');
+    } catch (e) {
+      print('Error updating throw in Firestore: $e');
+    }
+  }
+
+  // Method to update edited frame in Firestore
+  Future<BowlingFrame> _updateEditedFrameInFirestore(BowlingPlayer player,
+      int frameNumber, int throwNumber, int pinsDown) async {
+    if (!widget.isAdmin) {
+      return player.frames[frameNumber - 1];
+    }
+
+    try {
+      // Get the game document
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('bowlingGames')
+          .where('roomId', isEqualTo: widget.gameCode)
+          .limit(1)
+          .get();
+
+      if (querySnapshot.docs.isEmpty) {
+        print('Error: Game document not found for roomId: ${widget.gameCode}');
+        return player.frames[frameNumber - 1];
+      }
+
+      final gameDoc = querySnapshot.docs.first;
+
+      // Get the current players array from the document
+      final data = gameDoc.data();
+      final List<dynamic> players = List.from(data['players']);
+
+      // Find the player
+      final playerIndex = players.indexWhere((p) => p['id'] == player.id);
+      if (playerIndex == -1) {
+        print('Error: Player not found');
+        return player.frames[frameNumber - 1];
+      }
+
+      // Update this throw in the player's frames data
+      if (players[playerIndex]['frames'] == null) {
+        players[playerIndex]['frames'] = [];
+      }
+
+      // Ensure the frame exists
+      while (players[playerIndex]['frames'].length < frameNumber) {
+        players[playerIndex]['frames'].add({
+          'frameIndex': players[playerIndex]['frames'].length,
+          'firstThrow': null,
+          'secondThrow': null,
+          'thirdThrow': null,
+        });
+      }
+
+      // Get the frame
+      final frameIndex = frameNumber - 1;
+      final frame = players[playerIndex]['frames'][frameIndex];
+
+      // Update the appropriate throw
+      if (throwNumber == 1) {
+        frame['firstThrow'] = pinsDown;
+      } else if (throwNumber == 2) {
+        frame['secondThrow'] = pinsDown;
+      } else if (throwNumber == 3) {
+        frame['thirdThrow'] = pinsDown;
+      }
+
+      // Recalculate scores for the entire game
+      for (var i = 0; i < players.length; i++) {
+        final currentPlayer = BowlingPlayer(
+          id: players[i]['id'],
+          name: players[i]['name'],
+          frames: [],
+        );
+
+        // Convert frames from map to BowlingFrame objects
+        for (var frameData in players[i]['frames']) {
+          final frame = BowlingFrame(frameIndex: frameData['frameIndex']);
+          frame.firstThrow = frameData['firstThrow'];
+          frame.secondThrow = frameData['secondThrow'];
+          frame.thirdThrow = frameData['thirdThrow'];
+          currentPlayer.frames.add(frame);
+        }
+
+        // Calculate scores
+        _calculateScoresForPlayer(currentPlayer);
+
+        // Update the frame scores back to the Firestore data
+        for (var j = 0; j < currentPlayer.frames.length; j++) {
+          players[i]['frames'][j]['score'] = currentPlayer.frames[j].score;
+        }
+
+        // Get the highest frame that has a score
+        final lastFrameWithScore = currentPlayer.frames
+            .lastWhere((frame) => frame.score > 0, orElse: () {
+          return BowlingFrame(frameIndex: 0);
+        });
+
+        players[i]['totalScore'] = lastFrameWithScore.score;
+      }
+
+      // Create the updated game data
+      final Map<String, dynamic> updatedGameData = {
+        'players': players,
+      };
+
+      // Update the game document in Firestore
+      await gameDoc.reference.update(updatedGameData);
+
+      print(
+          'Successfully updated ${player.name}\'s frame $frameNumber, throw $throwNumber');
+      return player.frames[frameNumber - 1];
+    } catch (e) {
+      print('Error updating edited frame in Firestore: $e');
+      return player.frames[frameNumber - 1];
+    }
+  }
+
+  // Calculate scores for a player - similar to the game model's _calculateScores method
+  void _calculateScoresForPlayer(BowlingPlayer player) {
+    int totalScore = 0;
+
+    for (int i = 0; i < player.frames.length; i++) {
+      final frame = player.frames[i];
+      frame.score = 0;
+
+      // Basic score for this frame
+      int frameScore = 0;
+
+      // First throw
+      if (frame.firstThrow != null) {
+        frameScore += frame.firstThrow!;
+      }
+
+      // Second throw
+      if (frame.secondThrow != null) {
+        frameScore += frame.secondThrow!;
+      }
+
+      // Third throw (10th frame only)
+      if (i == 9 && frame.thirdThrow != null) {
+        frameScore += frame.thirdThrow!;
+      }
+
+      // Add strike/spare bonuses for frames 1-9
+      if (i < 9) {
+        // Strike bonus - next two throws
+        if (frame.isStrike) {
+          // Get next throw
+          int? nextThrow = _getNextThrow(player, i);
+          if (nextThrow != null) frameScore += nextThrow;
+
+          // Get second next throw
+          int? secondNextThrow = _getSecondNextThrow(player, i);
+          if (secondNextThrow != null) frameScore += secondNextThrow;
+        }
+        // Spare bonus - next throw
+        else if (frame.isSpare) {
+          int? nextThrow = _getNextThrow(player, i);
+          if (nextThrow != null) frameScore += nextThrow;
+        }
+      }
+
+      // Add frame score to total
+      totalScore += frameScore;
+      frame.score = totalScore;
+    }
+  }
+
+  // Get the next throw after a given frame
+  int? _getNextThrow(BowlingPlayer player, int frameIndex) {
+    // Next frame exists
+    if (frameIndex + 1 < player.frames.length) {
+      final nextFrame = player.frames[frameIndex + 1];
+
+      // Return first throw of next frame
+      return nextFrame.firstThrow;
+    }
+
+    return null;
+  }
+
+  // Get the second next throw after a given frame
+  int? _getSecondNextThrow(BowlingPlayer player, int frameIndex) {
+    // If the next frame is a strike, we need to look at the frame after that
+    if (frameIndex + 1 < player.frames.length) {
+      final nextFrame = player.frames[frameIndex + 1];
+
+      if (nextFrame.isStrike) {
+        // If next frame is a strike, look at first throw of the frame after
+        if (frameIndex + 2 < player.frames.length) {
+          return player.frames[frameIndex + 2].firstThrow;
+        }
+      } else {
+        // Otherwise, return second throw of next frame
+        return nextFrame.secondThrow;
+      }
+    }
+
+    return null;
   }
 
   void _setupForSecondThrow() {
@@ -1098,36 +1640,137 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
       _pinStates = List.generate(10, (_) => false);
       _pinsDown = 0;
       _selectedEditThrow = 2;
-
-      // Calculate remaining pins for second throw
-      _remainingPins =
-          10 - _previouslyKnockedPins.where((knocked) => knocked).length;
     });
   }
 
   void _setupForThirdThrow() {
-    // Reset all pins for third throw in 10th frame
+    // Save pins that were knocked down in second throw
     setState(() {
+      // Store which specific pins were knocked down in second throw
+      for (int i = 0; i < 10; i++) {
+        if (_pinStates[i]) {
+          _previouslyKnockedPins2[i] = true;
+        }
+      }
+
+      // Reset current selection
       _pinStates = List.generate(10, (_) => false);
-      _previouslyKnockedPins = List.generate(10, (_) => false);
       _pinsDown = 0;
       _selectedEditThrow = 3;
-      _remainingPins = 10; // Reset to 10 pins for bonus throw
     });
   }
 
-  void _completeFrameEdit() {
-    // Clear selection and reset pins
+  void _completeFrameEdit() async {
+    if (_selectedEditFrame == null || _selectedEditPlayer == null) {
+      return;
+    }
+
+    final frameNumber = _selectedEditFrame!;
+    final player = _selectedEditPlayer!;
+
+    // Get the current frame
+    final frame = player.frames[frameNumber - 1];
+
+    // Updating first throw
+    if (_selectedEditThrow == 1) {
+      final pinsDown = _pinsDown;
+
+      // Update in memory
+      setState(() {
+        frame.firstThrow = pinsDown;
+
+        // If strike, clear second throw (except in 10th frame)
+        if (pinsDown == 10 && frameNumber < 10) {
+          frame.secondThrow = 0;
+        }
+      });
+
+      // Update in Firestore
+      await _updateEditedFrameInFirestore(player, frameNumber, 1, pinsDown);
+
+      // If strike and not 10th frame, we're done
+      if (pinsDown == 10 && frameNumber < 10) {
+        _exitEditMode();
+      } else {
+        // Otherwise, set up for second throw
+        _setupForSecondThrow();
+      }
+    }
+    // Updating second throw
+    else if (_selectedEditThrow == 2) {
+      final pinsDown = _pinsDown;
+
+      // Validate second throw (can't knock down more pins than are standing)
+      final firstThrow = frame.firstThrow ?? 0;
+      if (firstThrow < 10 && firstThrow + pinsDown > 10) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'Invalid throw: Cannot knock down more than 10 pins total'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+        return;
+      }
+
+      // Update in memory
+      setState(() {
+        frame.secondThrow = pinsDown;
+      });
+
+      // Update in Firestore
+      await _updateEditedFrameInFirestore(player, frameNumber, 2, pinsDown);
+
+      // If 10th frame and strike/spare, set up for third throw
+      if (frameNumber == 10 &&
+          (firstThrow == 10 || firstThrow + pinsDown == 10)) {
+        _setupForThirdThrow();
+      } else {
+        _exitEditMode();
+      }
+    }
+    // Updating third throw (10th frame only)
+    else if (_selectedEditThrow == 3) {
+      final pinsDown = _pinsDown;
+
+      // Validate third throw
+      final secondThrow = frame.secondThrow ?? 0;
+      if (frame.firstThrow == 10 &&
+          secondThrow < 10 &&
+          secondThrow + pinsDown > 10) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'Invalid throw: Cannot knock down more than 10 pins total'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+        return;
+      }
+
+      // Update in memory
+      setState(() {
+        frame.thirdThrow = pinsDown;
+      });
+
+      // Update in Firestore
+      await _updateEditedFrameInFirestore(player, frameNumber, 3, pinsDown);
+
+      _exitEditMode();
+    }
+  }
+
+  void _exitEditMode() {
     setState(() {
       _selectedFrameIndex = null;
       _selectedPlayerId = null;
       _selectedEditThrow = 1;
-      _resetPins();
+      _pinStates = List.generate(10, (_) => false);
+      _previouslyKnockedPins = List.generate(10, (_) => false);
+      _previouslyKnockedPins2 = List.generate(10, (_) => false);
+      _pinsDown = 0;
     });
   }
-
-  // For editing frames
-  int _selectedEditThrow = 1;
 
   void _selectFrameForEdit(String playerId, int frameIndex) {
     // Reset for first throw
@@ -1291,7 +1934,8 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
 
       // Save game to Firestore
       final gameId = await firestoreService.saveGame(
-        location: location.isNotEmpty ? location : 'Unknown',
+        // Use "Bowling DeRing" as default if no location provided
+        location: location.isNotEmpty ? location : 'Bowling DeRing',
         players: playersData,
         date: DateTime.now(),
       );
@@ -1368,5 +2012,41 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
 
     // Submit a throw with 0 pins
     _submitThrow();
+  }
+
+  Future<bool> _showExitConfirmation() async {
+    final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Exit Game?'),
+            content: const Text(
+                'If you exit this screen, you won\'t be able to contribute further to this game and following frames will be counted as not thrown.'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Stay'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.ringPrimary,
+                ),
+                child: const Text('Leave Game'),
+              ),
+            ],
+          ),
+        ) ??
+        false; // Default to false (don't exit) if dialog is dismissed
+
+    // If user confirmed leaving, remove them from the game
+    if (confirmed && !widget.isAdmin) {
+      try {
+        await _firestoreService.removePlayerFromGame(widget.gameCode);
+      } catch (e) {
+        print('Error removing player from game: $e');
+      }
+    }
+
+    return confirmed;
   }
 }

@@ -143,7 +143,8 @@ class GameHistoryService {
             'id': doc.id,
             'date': formattedDate,
             'time': formattedTime,
-            'location': 'Bowling DeRing', // Hardcoded as per requirement
+            'location': gameData['location'] ??
+                'Bowling DeRing', // Use actual location from Firebase
             'duration': duration,
             'players': processedPlayers,
             'rawDate': gameData['date'], // Keep original timestamp for sorting

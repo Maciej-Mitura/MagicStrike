@@ -174,24 +174,38 @@ class StatsService {
         return [];
       }
 
-      final List<int> scores = [];
+      // Create a list to store scores with game dates
+      final List<Map<String, dynamic>> scoresWithDates = [];
 
       for (final game in games) {
         final players = game['players'] as List<dynamic>;
+        final gameDate = game['date'] as Timestamp;
+
         for (final player in players) {
           if (player is Map &&
               player['userId'] == deRingID &&
               player['firstName'] == firstName &&
               player['totalScore'] != null) {
-            scores.add(player['totalScore'] as int);
-            if (scores.length >= limit) {
-              return scores;
-            }
+            scoresWithDates.add({
+              'score': player['totalScore'] as int,
+              'date': gameDate,
+            });
           }
         }
       }
 
-      return scores;
+      // Sort by date (newest first)
+      scoresWithDates.sort(
+          (a, b) => (b['date'] as Timestamp).compareTo(a['date'] as Timestamp));
+
+      // Take only the most recent scores up to the limit
+      final List<int> recentScores = [];
+      for (int i = 0; i < scoresWithDates.length && i < limit; i++) {
+        recentScores.add(scoresWithDates[i]['score'] as int);
+      }
+
+      // Reverse to show oldest to newest (left to right on graph)
+      return recentScores.reversed.toList();
     } catch (e) {
       print('Error retrieving recent scores: $e');
       return [];

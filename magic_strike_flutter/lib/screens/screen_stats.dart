@@ -127,6 +127,7 @@ class _StatsScreenState extends State<StatsScreen>
     };
 
     // Use recent scores or empty list if none available
+    // ignore: unused_local_variable
     final List<int> gameScores = _recentScores.isNotEmpty
         ? _recentScores
         : [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]; // Default empty scores
@@ -247,9 +248,9 @@ class _StatsScreenState extends State<StatsScreen>
                                   color: Colors.black,
                                 ),
                               ),
-                              Text(
-                                'Last ${gameScores.length} games',
-                                style: const TextStyle(
+                              const Text(
+                                'Last 10 games',
+                                style: TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w500,
                                   color: Colors.grey,
@@ -260,18 +261,7 @@ class _StatsScreenState extends State<StatsScreen>
                           const SizedBox(height: 16),
 
                           // Score Graph
-                          Container(
-                            height: 300, // Fixed height for the graph
-                            width: double.infinity,
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.fromLTRB(16.0, 20, 16.0,
-                                  40), // Reduced horizontal padding
-                              child: _buildScoreGraph(gameScores),
-                            ),
-                          ),
+                          _buildScoreGraph(),
                         ],
                       ),
 
@@ -444,10 +434,48 @@ class _StatsScreenState extends State<StatsScreen>
   }
 
   // Helper method to build the score graph
-  Widget _buildScoreGraph(List<int> scores) {
-    return CustomPaint(
-      size: const Size(double.infinity, double.infinity),
-      painter: ScoreGraphPainter(scores: scores),
+  Widget _buildScoreGraph() {
+    return Column(
+      children: [
+        Container(
+          margin: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 8.0),
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.grey.shade300, width: 1.5),
+            borderRadius: BorderRadius.circular(12.0),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(left: 16.0, top: 16.0),
+                child: Text(
+                  "Score History",
+                  style: TextStyle(
+                    fontSize: 16.0,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey.shade800,
+                  ),
+                ),
+              ),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  // Make the graph responsive to screen size
+                  final width = constraints.maxWidth;
+                  final height = width * 0.65; // Maintain aspect ratio
+
+                  return Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: CustomPaint(
+                      size: Size(width, height),
+                      painter: ScoreGraphPainter(scores: _recentScores),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -460,16 +488,26 @@ class ScoreGraphPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Define constants
-    const int maxYAxis = 300; // Maximum bowling score
-    const int yAxisStep = 50; // Step size for Y-axis
-    const int yAxisDivisions = maxYAxis ~/
-        yAxisStep; // Will be 6 divisions (0, 50, 100, 150, 200, 250, 300)
+    // Ensure we always have 10 scores to display
+    final List<int> displayScores = _getDisplayScores();
+
+    if (displayScores.every((score) => score == 0)) {
+      _drawNoDataMessage(canvas, size);
+      return;
+    }
+
+    // Always use fixed scale from 0 to 300
+    final int yAxisMax = 300;
+    final int yAxisStep = 50;
+    final int yAxisDivisions = yAxisMax ~/ yAxisStep;
 
     // Left and right margins within the graph area
-    final double leftMargin = 10; // Reduced left margin
-    final double rightMargin = 35; // Slightly reduced right margin
+    final double leftMargin = 10; // Reduced left margin (no left Y-axis)
+    final double rightMargin = 35; // For right labels
+    final double topMargin = 20; // For top padding
+    final double bottomMargin = 40; // Increased for X-axis title
     final double graphWidth = size.width - leftMargin - rightMargin;
+    final double graphHeight = size.height - topMargin - bottomMargin;
 
     // Paints
     final axisPaint = Paint()
@@ -490,29 +528,34 @@ class ScoreGraphPainter extends CustomPainter {
       ..strokeWidth = 5
       ..style = PaintingStyle.fill;
 
-    // Draw Y-axis on the right side of the graph area
+    final pointOuterPaint = Paint()
+      ..color = Colors.white
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke;
+
+    // Draw Y-axis only on the right side
     canvas.drawLine(
-      Offset(leftMargin + graphWidth, 0),
-      Offset(leftMargin + graphWidth, size.height),
+      Offset(leftMargin + graphWidth, topMargin),
+      Offset(leftMargin + graphWidth, topMargin + graphHeight),
       axisPaint,
     );
 
     // Draw X-axis
     canvas.drawLine(
-      Offset(leftMargin, size.height),
-      Offset(leftMargin + graphWidth, size.height),
+      Offset(leftMargin, topMargin + graphHeight),
+      Offset(leftMargin + graphWidth, topMargin + graphHeight),
       axisPaint,
     );
 
-    // Draw horizontal grid lines and Y-axis labels
+    // Draw horizontal grid lines and Y-axis labels (right side only)
     final yAxisTextStyle = const TextStyle(
       color: Colors.black,
       fontSize: 10,
     );
 
     for (int i = 0; i <= yAxisDivisions; i++) {
-      final y = size.height - (i * size.height / yAxisDivisions);
-      final score = i * yAxisStep; // Fixed increments of 50
+      final y = topMargin + (graphHeight - (i * graphHeight / yAxisDivisions));
+      final score = i * yAxisStep;
 
       // Draw grid line
       canvas.drawLine(
@@ -521,9 +564,38 @@ class ScoreGraphPainter extends CustomPainter {
         gridPaint,
       );
 
-      // Draw Y-axis label outside the graph area
+      // Right label only
       final textSpan = TextSpan(
         text: score.toString(),
+        style: yAxisTextStyle,
+      );
+      final textPainter = TextPainter(
+        text: textSpan,
+        textDirection: TextDirection.ltr,
+      );
+      textPainter.layout();
+      textPainter.paint(canvas,
+          Offset(leftMargin + graphWidth + 8, y - textPainter.height / 2));
+    }
+
+    // Always use 10 games for X-axis
+    final int gameCount = displayScores.length;
+    final double xStep = graphWidth / (gameCount - 1);
+
+    // Draw grid lines and X-axis labels for all games
+    for (int i = 0; i < gameCount; i++) {
+      final x = leftMargin + (i * xStep);
+
+      // Draw vertical grid line
+      canvas.drawLine(
+        Offset(x, topMargin),
+        Offset(x, topMargin + graphHeight),
+        gridPaint,
+      );
+
+      // Draw X-axis label (just the number) for all games
+      final textSpan = TextSpan(
+        text: (i + 1).toString(),
         style: yAxisTextStyle,
       );
       final textPainter = TextPainter(
@@ -532,67 +604,143 @@ class ScoreGraphPainter extends CustomPainter {
         textAlign: TextAlign.center,
       );
       textPainter.layout();
-
-      // Position the label to the right of the graph
-      textPainter.paint(canvas,
-          Offset(leftMargin + graphWidth + 10, y - textPainter.height / 2));
-    }
-
-    // Draw vertical grid lines and X-axis labels
-    final xAxisTextStyle = const TextStyle(
-      color: Colors.black,
-      fontSize: 10,
-    );
-
-    for (int i = 0; i < scores.length; i++) {
-      final x = leftMargin + (i * graphWidth / (scores.length - 1));
-
-      // Draw grid line
-      canvas.drawLine(
-        Offset(x, 0),
-        Offset(x, size.height),
-        gridPaint,
-      );
-
-      // Draw X-axis label (game number)
-      final textSpan = TextSpan(
-        text: (i + 1).toString(),
-        style: xAxisTextStyle,
-      );
-      final textPainter = TextPainter(
-        text: textSpan,
-        textDirection: TextDirection.ltr,
-      );
-      textPainter.layout();
       textPainter.paint(
         canvas,
-        Offset(x - textPainter.width / 2, size.height + 10),
+        Offset(x - textPainter.width / 2, topMargin + graphHeight + 5),
       );
     }
 
-    // Draw the score graph line
+    // Draw X-axis title "Games"
+    final xAxisTitleSpan = TextSpan(
+      text: "Games",
+      style: const TextStyle(
+        color: Colors.black,
+        fontSize: 12,
+        fontWeight: FontWeight.w500,
+      ),
+    );
+    final xAxisTitlePainter = TextPainter(
+      text: xAxisTitleSpan,
+      textDirection: TextDirection.ltr,
+      textAlign: TextAlign.center,
+    );
+    xAxisTitlePainter.layout();
+    xAxisTitlePainter.paint(
+      canvas,
+      Offset(
+        (size.width - xAxisTitlePainter.width) / 2,
+        size.height - xAxisTitlePainter.height - 5,
+      ),
+    );
+
+    // Draw the path connecting ALL points, including zeros
     final path = Path();
 
-    for (int i = 0; i < scores.length; i++) {
-      final x = leftMargin + (i * graphWidth / (scores.length - 1));
-      // Calculate y position based on fixed scale (0-300)
-      final y = size.height - (scores[i] * size.height / maxYAxis);
+    for (int i = 0; i < displayScores.length; i++) {
+      final x = leftMargin + (i * xStep);
+      final score = displayScores[i];
+      final y = topMargin + graphHeight - (score * graphHeight / yAxisMax);
 
       if (i == 0) {
         path.moveTo(x, y);
       } else {
         path.lineTo(x, y);
       }
-
-      // Draw points at each data point
-      canvas.drawCircle(Offset(x, y), 4, pointPaint);
     }
 
     canvas.drawPath(path, graphPaint);
+
+    // Draw points for all games, including zeros
+    for (int i = 0; i < displayScores.length; i++) {
+      final x = leftMargin + (i * xStep);
+      final score = displayScores[i];
+      final y = topMargin + graphHeight - (score * graphHeight / yAxisMax);
+
+      // Draw point (even for zero scores)
+      canvas.drawCircle(Offset(x, y), 5, pointPaint);
+      canvas.drawCircle(Offset(x, y), 6, pointOuterPaint);
+
+      // Draw score label above the point (only for non-zero scores)
+      if (score > 0) {
+        final textSpan = TextSpan(
+          text: score.toString(),
+          style: const TextStyle(
+            color: Colors.grey,
+            fontSize: 10,
+            fontWeight: FontWeight.w500,
+          ),
+        );
+        final textPainter = TextPainter(
+          text: textSpan,
+          textDirection: TextDirection.ltr,
+          textAlign: TextAlign.center,
+        );
+        textPainter.layout();
+        textPainter.paint(
+          canvas,
+          Offset(x - textPainter.width / 2, y - textPainter.height - 6),
+        );
+      }
+    }
+  }
+
+  // Get exactly 10 scores for display, with newest scores at the end
+  List<int> _getDisplayScores() {
+    if (scores.isEmpty) {
+      return List.filled(10, 0);
+    }
+
+    List<int> result = List<int>.from(scores);
+
+    // If we have fewer than 10 scores, pad with zeros at the beginning
+    if (result.length < 10) {
+      final leadingZeros = List.filled(10 - result.length, 0);
+      result = [...leadingZeros, ...result];
+    }
+
+    // If we have more than
+    if (result.length > 10) {
+      result = result.sublist(result.length - 10);
+    }
+
+    return result;
+  }
+
+  // Draw a message when no data is available
+  void _drawNoDataMessage(Canvas canvas, Size size) {
+    const message = 'No score data available';
+    final textSpan = TextSpan(
+      text: message,
+      style: const TextStyle(
+        color: Colors.grey,
+        fontSize: 16,
+        fontWeight: FontWeight.w500,
+      ),
+    );
+    final textPainter = TextPainter(
+      text: textSpan,
+      textDirection: TextDirection.ltr,
+      textAlign: TextAlign.center,
+    );
+    textPainter.layout(maxWidth: size.width);
+    textPainter.paint(
+      canvas,
+      Offset((size.width - textPainter.width) / 2,
+          (size.height - textPainter.height) / 2),
+    );
   }
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) {
+    if (oldDelegate is ScoreGraphPainter) {
+      // Only repaint if scores have changed
+      if (scores.length != oldDelegate.scores.length) return true;
+
+      for (int i = 0; i < scores.length; i++) {
+        if (scores[i] != oldDelegate.scores[i]) return true;
+      }
+      return false;
+    }
     return true;
   }
 }

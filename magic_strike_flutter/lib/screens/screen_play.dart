@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:magic_strike_flutter/constants/app_colors.dart';
 import 'package:magic_strike_flutter/screens/screen_start_game.dart';
 import 'package:magic_strike_flutter/screens/screen_live_tracking.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 class PlayScreen extends StatelessWidget {
   const PlayScreen({super.key});
@@ -74,15 +75,23 @@ class PlayScreen extends StatelessWidget {
                             color: AppColors.ringBackground3rd,
                             borderRadius: BorderRadius.circular(12.0),
                           ),
-                          child: const Center(
-                            child: Text(
-                              "Start a game",
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              FaIcon(
+                                FontAwesomeIcons.bowlingBall,
                                 color: Colors.white,
                               ),
-                            ),
+                              SizedBox(width: 8),
+                              Text(
+                                "Play a game",
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
@@ -105,15 +114,23 @@ class PlayScreen extends StatelessWidget {
                             color: AppColors.ringBackground3rd,
                             borderRadius: BorderRadius.circular(12.0),
                           ),
-                          child: const Center(
-                            child: Text(
-                              "Live tracking",
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.visibility,
                                 color: Colors.white,
                               ),
-                            ),
+                              SizedBox(width: 8),
+                              Text(
+                                "Live tracking",
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),

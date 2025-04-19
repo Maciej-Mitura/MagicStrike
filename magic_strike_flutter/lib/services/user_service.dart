@@ -68,7 +68,7 @@ class UserService {
 
         // Store values in memory
         _currentUserDeRingID = deRingID;
-        _currentUserFirstName = storedFirstName;
+        _currentUserFirstName = storedFirstName ?? '';
 
         return {
           'deRingID': deRingID,
@@ -85,11 +85,18 @@ class UserService {
           'email': currentUser.email,
           'displayName': currentUser.displayName,
           'createdAt': FieldValue.serverTimestamp(),
+          // Additional user fields with empty initial values
+          'clubOrTeam': '', // User's bowling club or team
+          'dateOfBirth': '', // User's date of birth
+          'gender': '', // User's gender
+          'lastName': '', // User's last name
+          'side': '', // User's bowling side (e.g., right/left)
+          'style': '', // User's bowling style
         });
 
         // Store values in memory
         _currentUserDeRingID = newDeRingID;
-        _currentUserFirstName = firstName;
+        _currentUserFirstName = firstName ?? '';
 
         return {
           'deRingID': newDeRingID,
@@ -202,5 +209,89 @@ class UserService {
   void clearUserData() {
     _currentUserDeRingID = null;
     _currentUserFirstName = null;
+  }
+
+  /// Update the cached firstName value
+  void updateCachedFirstName(String firstName) {
+    _currentUserFirstName = firstName;
+  }
+
+  /// Update all games with the new firstName for the current user
+  /// This ensures all historical games show the correct user information
+  Future<void> updateGamesWithNewName(String newFirstName) async {
+    try {
+      final String? deRingID = _currentUserDeRingID;
+      final String? oldFirstName = _currentUserFirstName;
+
+      if (deRingID == null || oldFirstName == null) {
+        print('Cannot update games: Missing deRingID or firstName');
+        return;
+      }
+
+      print(
+          'Updating games for user $deRingID: $oldFirstName -> $newFirstName');
+
+      // Query all games
+      final QuerySnapshot gamesSnapshot =
+          await _firestore.collection('games').get();
+
+      int updatedGamesCount = 0;
+
+      // Batch to handle multiple updates efficiently
+      final WriteBatch batch = _firestore.batch();
+
+      // Iterate through all games
+      for (final doc in gamesSnapshot.docs) {
+        final Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+        bool gameNeedsUpdate = false;
+
+        // Update creatorName if this user created the game
+        if (data['createdBy'] == deRingID) {
+          data['creatorName'] = newFirstName;
+          gameNeedsUpdate = true;
+          print('Updated creator name in game ${doc.id}');
+        }
+
+        // Update player information in the players array
+        if (data['players'] != null && data['players'] is List) {
+          final List<dynamic> players = List.from(data['players']);
+
+          for (int i = 0; i < players.length; i++) {
+            if (players[i] is Map && players[i]['userId'] == deRingID) {
+              // Create a new map with updated firstName
+              Map<String, dynamic> updatedPlayer =
+                  Map<String, dynamic>.from(players[i]);
+              updatedPlayer['firstName'] = newFirstName;
+
+              // Replace the player in the list
+              players[i] = updatedPlayer;
+              gameNeedsUpdate = true;
+              print('Updated player name in game ${doc.id}');
+            }
+          }
+
+          if (gameNeedsUpdate) {
+            data['players'] = players;
+          }
+        }
+
+        // If any changes were made, add this document to the batch
+        if (gameNeedsUpdate) {
+          batch.update(doc.reference, data);
+          updatedGamesCount++;
+        }
+      }
+
+      // Commit all updates
+      if (updatedGamesCount > 0) {
+        await batch.commit();
+        print(
+            'Updated $updatedGamesCount games with new firstName: $newFirstName');
+      } else {
+        print('No games needed to be updated');
+      }
+    } catch (e) {
+      print('Error updating games with new name: $e');
+    }
   }
 }

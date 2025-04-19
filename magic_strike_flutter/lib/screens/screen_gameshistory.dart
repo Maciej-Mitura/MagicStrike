@@ -427,7 +427,7 @@ class _GamesHistoryScreenState extends State<GamesHistoryScreen> {
                             ),
                             const SizedBox(width: 4),
                             Text(
-                              'Winner: ${winner['firstName']}',
+                              'Winner: ${winner['firstName'].toString().length > 10 ? '${winner['firstName'].toString().substring(0, 10)}...' : winner['firstName']}',
                               style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.bold,

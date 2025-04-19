@@ -1,10 +1,11 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-
 import 'package:magic_strike_flutter/constants/app_colors.dart';
 import 'package:magic_strike_flutter/models/game_model.dart';
-import 'package:magic_strike_flutter/services/game_service.dart';
+import 'package:magic_strike_flutter/services/firestore_service.dart';
+import 'package:magic_strike_flutter/services/user_service.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class LiveTrackingScreen extends StatefulWidget {
   const LiveTrackingScreen({super.key});
@@ -16,52 +17,69 @@ class LiveTrackingScreen extends StatefulWidget {
 class LiveTrackingScreenState extends State<LiveTrackingScreen> {
   final TextEditingController _gameIdController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
-  final GameService _gameService = GameService();
+  late FirestoreService _firestoreService;
+  late UserService _userService;
 
-  // Add a constant viewerId for development/testing
-  // This will be replaced with a backend-provided ID in the future
-  final String _viewerId = 'test-viewer-123';
+  // For real-time updates
+  StreamSubscription<QuerySnapshot>? _gameDocSubscription;
 
-  // Stream subscription for game updates
-  StreamSubscription<LiveGame>? _gameSubscription;
-
-  // Current game state
-  LiveGame? _game;
-
-  // Loading state
+  // Game data
+  Map<String, dynamic>? _gameData;
+  List<dynamic> _gamePlayers = [];
+  List<Map<String, dynamic>> _processedPlayers = [];
+  String _gameStatus = 'waiting';
+  int _currentFrame = 1;
+  int _currentPlayerIndex = 0;
+  int _currentThrow = 1;
   bool _isLoading = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _firestoreService = FirestoreService();
+    _userService = UserService();
+  }
 
   @override
   void dispose() {
     // Clean up controller and subscription
     _gameIdController.dispose();
+    _gameDocSubscription?.cancel();
     _leaveGame();
     super.dispose();
   }
 
-  // Join a live game
-  void _joinGame(String gameId) {
+  Future<void> _trackGame(String gameId) async {
     setState(() {
       _isLoading = true;
       _error = null;
     });
 
     try {
-      // Leave previous game if any
-      _leaveGame();
+      // Add user as a spectator to the game
+      final gameData = await _firestoreService.spectateGame(gameId);
 
-      // Add a shorter delay only for simulation purposes
-      // We'll check if it's a completed game (STRIKE456) to provide immediate feedback
-      if (gameId == 'STRIKE456') {
-        // Perfect game is already complete, connect faster
-        _connectToGame(gameId);
-      } else {
-        // For other demo games, use a shorter delay
-        Future.delayed(const Duration(milliseconds: 150), () {
-          _connectToGame(gameId);
-        });
+      if (gameData == null) {
+        throw Exception('Game not found with code: $gameId');
       }
+
+      setState(() {
+        _gameData = gameData;
+        _gamePlayers = gameData['players'] ?? [];
+        _gameStatus = gameData['status'] ?? 'waiting';
+        _currentFrame = gameData['currentFrame'] ?? 1;
+        _currentPlayerIndex = gameData['currentPlayerIndex'] ?? 0;
+        _currentThrow = gameData['currentThrow'] ?? 1;
+
+        // Process players for display
+        _processPlayers();
+
+        _isLoading = false;
+      });
+
+      // Start listening for game updates
+      _listenForGameUpdates(gameId);
     } catch (e) {
       setState(() {
         _error = e.toString();
@@ -70,55 +88,159 @@ class LiveTrackingScreenState extends State<LiveTrackingScreen> {
     }
   }
 
-  // Helper method to connect to a game
-  void _connectToGame(String gameId) {
-    try {
-      // Join the new game with error handling for the type cast issue
-      _gameSubscription = _gameService.joinGame(gameId, _viewerId).listen(
-        (game) {
-          setState(() {
-            _game = game;
-            _isLoading = false;
-          });
-        },
-        onError: (error) {
-          setState(() {
-            _error = "Error joining game: ${error.toString()}";
-            _isLoading = false;
-          });
-        },
-      );
-    } catch (e) {
-      setState(() {
-        _error = "Failed to join game: ${e.toString()}";
-        _isLoading = false;
+  void _processPlayers() {
+    _processedPlayers = [];
+
+    for (final playerData in _gamePlayers) {
+      final name = playerData['firstName'] ?? 'Unknown';
+      final totalScore = playerData['totalScore'] ?? 0;
+      final throwsPerFrame =
+          Map<String, dynamic>.from(playerData['throwsPerFrame'] ?? {});
+
+      // Process frames
+      final frames = <Map<String, dynamic>>[];
+
+      for (int i = 1; i <= 10; i++) {
+        final frameKey = i.toString();
+        final throwsList = List<dynamic>.from(throwsPerFrame[frameKey] ?? []);
+
+        final frame = {
+          'frameIndex': i - 1,
+          'throws': throwsList,
+          'isComplete': _isFrameComplete(i, throwsList),
+        };
+
+        frames.add(frame);
+      }
+
+      _processedPlayers.add({
+        'name': name,
+        'totalScore': totalScore,
+        'frames': frames,
+        'userId': playerData['userId'] ?? '',
+        'isActive':
+            playerData['isActive'] != false, // default to true if not specified
       });
     }
   }
 
-  // Leave the current game
-  void _leaveGame() {
-    if (_game != null) {
-      _gameService.leaveGame(_game!.id, _viewerId);
+  bool _isFrameComplete(int frameIndex, List<dynamic> throws) {
+    // For frames 1-9
+    if (frameIndex < 10) {
+      return throws.length >= 2 || (throws.isNotEmpty && throws[0] == 10);
     }
+    // For 10th frame
+    else {
+      if (throws.isEmpty) return false;
 
-    _gameSubscription?.cancel();
-    _gameSubscription = null;
+      // If first throw is a strike, need 3 throws
+      if (throws[0] == 10) {
+        return throws.length >= 3;
+      }
+      // If first + second is a spare, need 3 throws
+      else if (throws.length >= 2 && throws[0] + throws[1] == 10) {
+        return throws.length >= 3;
+      }
+      // Otherwise need 2 throws
+      else {
+        return throws.length >= 2;
+      }
+    }
+  }
 
-    setState(() {
-      _game = null;
+  Future<void> _leaveGame() async {
+    try {
+      if (_gameData != null) {
+        await _firestoreService.removeSpectatorFromGame(_gameData!['roomId']);
+      }
+    } catch (e) {
+      print('Error leaving game: $e');
+    }
+  }
+
+  void _listenForGameUpdates(String gameId) {
+    // Listen for updates to the game document
+    _gameDocSubscription = FirebaseFirestore.instance
+        .collection('games')
+        .where('roomId', isEqualTo: gameId)
+        .limit(1)
+        .snapshots()
+        .listen((snapshot) {
+      if (snapshot.docs.isEmpty) {
+        setState(() {
+          _error = 'Game not found or has been removed';
+        });
+        return;
+      }
+
+      final gameDoc = snapshot.docs.first;
+      final gameData = gameDoc.data();
+
+      // Get the players array from the game document
+      final List<dynamic> players = gameData['players'] ?? [];
+
+      if (mounted) {
+        setState(() {
+          _gamePlayers = players;
+          _gameStatus = gameData['status'] ?? 'waiting';
+          _currentFrame = gameData['currentFrame'] ?? 1;
+          _currentPlayerIndex = gameData['currentPlayerIndex'] ?? 0;
+          _currentThrow = gameData['currentThrow'] ?? 1;
+
+          // Update the processed players
+          _processPlayers();
+        });
+      }
+    }, onError: (error) {
+      setState(() {
+        _error = 'Error receiving game updates: $error';
+      });
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        title: const Text('Live Tracking'),
-        centerTitle: true,
+    return WillPopScope(
+      onWillPop: () async {
+        // Show confirmation dialog when user tries to exit
+        if (_gameData != null) {
+          final shouldPop = await _showExitConfirmation();
+          return shouldPop;
+        }
+        return true;
+      },
+      child: Scaffold(
+        backgroundColor: Colors.white,
+        appBar: _gameData == null
+            ? AppBar(
+                title: const Text('Live Tracking'),
+                centerTitle: true,
+              )
+            : AppBar(
+                backgroundColor: AppColors.ringPrimary,
+                foregroundColor: Colors.white,
+                title: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Tracking Game: ${_gameData!['roomId']}'),
+                    const Text(
+                      'View only mode',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.normal,
+                      ),
+                    ),
+                  ],
+                ),
+                actions: [
+                  IconButton(
+                    icon: const Icon(Icons.info_outline),
+                    onPressed: () => _showGameInfo(),
+                  ),
+                ],
+              ),
+        body: _gameData == null ? _buildGameIdForm() : _buildLiveGame(),
       ),
-      body: _game == null ? _buildGameIdForm() : _buildLiveGame(),
     );
   }
 
@@ -162,20 +284,18 @@ class LiveTrackingScreenState extends State<LiveTrackingScreen> {
                     borderSide:
                         BorderSide(color: AppColors.ringPrimary, width: 2),
                   ),
+                  hintText: 'Enter room code',
+                  hintStyle: TextStyle(color: Colors.grey[400]),
                 ),
                 cursorColor: AppColors.ringPrimary,
+                style: TextStyle(
+                  color: AppColors.ringPrimary,
+                  fontWeight: FontWeight.bold,
+                ),
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return 'Please enter a Game ID';
                   }
-
-                  // Check if it's one of our demo game IDs
-                  if (value != 'BOWL123' &&
-                      value != 'STRIKE456' &&
-                      value != 'GAME789') {
-                    return 'Invalid Game ID. Try BOWL123, STRIKE456, or GAME789';
-                  }
-
                   return null;
                 },
               ),
@@ -185,7 +305,8 @@ class LiveTrackingScreenState extends State<LiveTrackingScreen> {
                     ? null
                     : () {
                         if (_formKey.currentState!.validate()) {
-                          _joinGame(_gameIdController.text);
+                          _trackGame(
+                              _gameIdController.text.trim().toUpperCase());
                         }
                       },
                 style: ElevatedButton.styleFrom(
@@ -229,319 +350,412 @@ class LiveTrackingScreenState extends State<LiveTrackingScreen> {
   }
 
   Widget _buildLiveGame() {
-    if (_game == null) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
     return Column(
       children: [
-        _buildGameHeader(),
-        _buildCurrentFrame(),
-        Expanded(
-          child: _buildScoreboard(),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildGameHeader() {
-    // Check if the game is complete (all players have finished all 10 frames)
-    bool isGameComplete = true;
-    if (_game != null) {
-      for (final player in _game!.players) {
-        if (player.frames.length < 10 || !player.frames[9].isComplete) {
-          isGameComplete = false;
-          break;
-        }
-      }
-
-      // Update game status if complete but not marked as completed
-      if (isGameComplete && _game!.status != 'completed') {
-        _game!.status = 'completed';
-      }
-    }
-
-    // Add a border bottom for visual separation
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border(
-          bottom: BorderSide(color: Colors.grey[300]!, width: 1),
-        ),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        // Status bar
+        Container(
+          padding: const EdgeInsets.all(8.0),
+          color: _gameStatus == 'waiting'
+              ? Colors.orange[100]
+              : _gameStatus == 'in_progress'
+                  ? Colors.blue[100]
+                  : Colors.green[100],
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(
-                'Game ID: ${_game!.id}',
-                style: const TextStyle(
-                  color: Colors.black,
-                  fontWeight: FontWeight.bold,
-                ),
+              Icon(
+                _gameStatus == 'waiting'
+                    ? Icons.hourglass_empty
+                    : _gameStatus == 'in_progress'
+                        ? Icons.play_arrow
+                        : Icons.check_circle,
+                color: _gameStatus == 'waiting'
+                    ? Colors.orange[800]
+                    : _gameStatus == 'in_progress'
+                        ? Colors.blue[800]
+                        : Colors.green[800],
               ),
-              Row(
-                children: [
-                  Text(
-                    'Status: ',
-                    style: const TextStyle(
-                      color: Colors.black,
-                    ),
-                  ),
-                  Text(
-                    _game!.status,
-                    style: TextStyle(
-                      color: _game!.status == 'completed'
-                          ? Colors.green
-                          : Colors.blue,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          Row(
-            children: [
-              Icon(Icons.people, color: AppColors.ringPrimary),
-              const SizedBox(width: 4),
+              const SizedBox(width: 8),
               Text(
-                '${_game!.viewerCount}',
+                'Game Status: ${_gameStatus.toUpperCase()}',
                 style: TextStyle(
-                  color: AppColors.ringPrimary,
                   fontWeight: FontWeight.bold,
+                  color: _gameStatus == 'waiting'
+                      ? Colors.orange[800]
+                      : _gameStatus == 'in_progress'
+                          ? Colors.blue[800]
+                          : Colors.green[800],
                 ),
               ),
             ],
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCurrentFrame() {
-    // Add a border bottom for visual separation
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border(
-          bottom: BorderSide(color: Colors.grey[300]!, width: 1),
         ),
-      ),
-      child: Row(
-        children: [
-          FaIcon(FontAwesomeIcons.bowlingBall, size: 24, color: Colors.black),
-          const SizedBox(width: 8),
-          Text(
-            'Current Frame: ${_game!.currentFrame}',
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Colors.black,
+
+        // Scoreboard section
+        Expanded(
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: _buildScoreboard(),
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
   Widget _buildScoreboard() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
+    return Card(
+      elevation: 0,
+      margin: const EdgeInsets.all(8),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      color: Colors.white,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          children: [
+            // Current frame and player info
+            _buildGameInfo(),
+
+            const SizedBox(height: 12),
+
+            // Frame headers
+            _buildFrameHeaders(),
+
+            // Player rows
+            ..._processedPlayers.map((player) => _buildPlayerRow(player)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGameInfo() {
+    // Get current player name
+    String? currentPlayerName;
+    if (_currentPlayerIndex < _processedPlayers.length) {
+      currentPlayerName = _processedPlayers[_currentPlayerIndex]['name'];
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+      ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Padding(
-            padding: EdgeInsets.only(bottom: 12),
-            child: Text(
-              'Live Scoreboard',
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Frame $_currentFrame',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              if (_gameStatus == 'in_progress')
+                Text(
+                  'Throw $_currentThrow',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+            ],
+          ),
+          if (_gameStatus == 'in_progress' && currentPlayerName != null)
+            Container(
+              alignment: Alignment.centerLeft,
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                'Current Player: $currentPlayerName',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.ringPrimary,
+                ),
+              ),
+            )
+          else if (_gameStatus == 'completed')
+            Container(
+              alignment: Alignment.center,
+              padding: const EdgeInsets.only(top: 8),
+              child: const Text(
+                'Game Complete!',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.green,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFrameHeaders() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Row(
+        children: [
+          // Player column
+          Container(
+            width: 80,
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            decoration: BoxDecoration(
+              color: AppColors.ringPrimary,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(8),
+                bottomLeft: Radius.circular(8),
+              ),
+            ),
+            alignment: Alignment.center,
+            child: const Text(
+              'Player',
               style: TextStyle(
-                fontSize: 20,
+                color: Colors.white,
                 fontWeight: FontWeight.bold,
-                color: Colors.black,
               ),
             ),
           ),
-          Expanded(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final availableWidth = constraints.maxWidth;
-                // Allocate column widths for player names, frames, and total score
-                final nameColumnWidth = availableWidth * 0.15;
-                final framesWidth = availableWidth * 0.80;
-                final totColumnWidth = availableWidth * 0.05;
-                // Calculate frame width
-                final frameWidth = (framesWidth / 10) - 1;
-                final frameHeight = frameWidth * 0.9;
 
-                return Column(
-                  children: [
-                    // Frame numbers header
-                    Row(
-                      children: [
-                        // Empty space above player names
-                        SizedBox(width: nameColumnWidth),
-                        // Frame numbers
-                        SizedBox(
-                          width: framesWidth,
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: List.generate(10, (frameIndex) {
-                              return SizedBox(
-                                width: frameWidth,
-                                child: Container(
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: _game!.currentFrame == frameIndex + 1
-                                        ? AppColors.ringSecondary
-                                        : AppColors.ringPrimary,
-                                    borderRadius: const BorderRadius.only(
-                                      topLeft: Radius.circular(3),
-                                      topRight: Radius.circular(3),
-                                    ),
-                                  ),
-                                  child: Text(
-                                    '${frameIndex + 1}',
-                                    textAlign: TextAlign.center,
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ),
-                              );
-                            }),
-                          ),
-                        ),
-                        // Total score header
-                        Container(
-                          width: totColumnWidth,
-                          padding: const EdgeInsets.symmetric(vertical: 2),
-                          decoration: const BoxDecoration(
-                            color: AppColors.ringPrimary,
-                            borderRadius: BorderRadius.only(
-                              topLeft: Radius.circular(3),
-                              topRight: Radius.circular(3),
-                            ),
-                          ),
-                          child: const Text(
-                            'T',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                      ],
+          // Frame numbers
+          ...List.generate(10, (index) {
+            final isCurrentFrame = index + 1 == _currentFrame;
+
+            return Expanded(
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  color: isCurrentFrame
+                      ? AppColors.ringSecondary
+                      : AppColors.ringPrimary,
+                  borderRadius: index == 9
+                      ? const BorderRadius.only(
+                          topRight: Radius.circular(8),
+                          bottomRight: Radius.circular(8),
+                        )
+                      : null,
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  '${index + 1}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPlayerRow(Map<String, dynamic> player) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8.0),
+      child: Row(
+        children: [
+          // Player name column
+          Container(
+            width: 80,
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.grey[200],
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(8),
+                bottomLeft: Radius.circular(8),
+              ),
+            ),
+            alignment: Alignment.center,
+            child: Column(
+              children: [
+                Text(
+                  player['name'] as String,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.ringPrimary,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '${player['totalScore']}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
                     ),
+                  ),
+                ),
+              ],
+            ),
+          ),
 
-                    // Player rows with frames
-                    Expanded(
-                      child: ListView.builder(
-                        itemCount: _game!.players.length,
-                        itemBuilder: (context, playerIndex) {
-                          final player = _game!.players[playerIndex];
+          // Player's frames
+          ...List.generate(
+            10,
+            (frameIndex) {
+              final frames = player['frames'] as List<Map<String, dynamic>>;
+              final frame = frames[frameIndex];
+              return Expanded(
+                child: _buildFrameCell(frame),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
 
-                          // Display shortened name if too long
-                          final displayName = player.name.length > 5
-                              ? '${player.name.substring(0, 4)}.'
-                              : player.name;
+  Widget _buildFrameCell(Map<String, dynamic> frame) {
+    final frameIndex = frame['frameIndex'] as int;
+    final bool isTenthFrame = frameIndex == 9;
+    final throwsList = frame['throws'] as List<dynamic>;
 
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 1.0),
-                            child: Row(
-                              children: [
-                                // Player name column
-                                SizedBox(
-                                  width: nameColumnWidth,
-                                  child: Text(
-                                    displayName,
-                                    style: const TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.black,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-
-                                // Player frames
-                                SizedBox(
-                                  width: framesWidth,
-                                  child: Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
-                                    children: List.generate(10, (frameIndex) {
-                                      // Check if this frame exists for the player
-                                      bool hasFrame =
-                                          frameIndex < player.frames.length;
-
-                                      return SizedBox(
-                                        width: frameWidth,
-                                        height: frameHeight,
-                                        child: Container(
-                                          margin: const EdgeInsets.all(0.5),
-                                          decoration: BoxDecoration(
-                                            color: frameIndex + 1 ==
-                                                    _game!.currentFrame
-                                                ? AppColors.ringBackground3rd
-                                                    .withAlpha(76)
-                                                : Colors.white,
-                                            border: Border.all(
-                                                color: Colors.grey[300]!),
-                                            borderRadius:
-                                                BorderRadius.circular(2),
-                                          ),
-                                          child: hasFrame
-                                              ? _buildFrameCell(
-                                                  player.frames[frameIndex],
-                                                  frameIndex + 1 ==
-                                                      _game!.currentFrame)
-                                              : const SizedBox(),
-                                        ),
-                                      );
-                                    }),
-                                  ),
-                                ),
-
-                                // Total score
-                                Container(
-                                  width: totColumnWidth,
-                                  height: frameHeight,
-                                  alignment: Alignment.center,
-                                  decoration: const BoxDecoration(
-                                    color: Colors.transparent,
-                                  ),
-                                  child: FittedBox(
-                                    fit: BoxFit.scaleDown,
-                                    child: Text(
-                                      '${player.totalScore}',
-                                      style: const TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.black,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: Colors.grey[300]!),
+        borderRadius: frameIndex == 9
+            ? const BorderRadius.only(
+                topRight: Radius.circular(8),
+                bottomRight: Radius.circular(8),
+              )
+            : null,
+      ),
+      height: 50,
+      child: Column(
+        children: [
+          // Throws display area
+          Expanded(
+            flex: 3,
+            child: Row(
+              children: [
+                // First throw display
+                Expanded(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      border: Border(
+                        right: BorderSide(color: Colors.grey[300]!),
+                        bottom: BorderSide(color: Colors.grey[300]!),
                       ),
                     ),
-                  ],
-                );
-              },
+                    alignment: Alignment.center,
+                    child: throwsList.isNotEmpty
+                        ? Text(
+                            throwsList[0] == 10
+                                ? 'X'
+                                : throwsList[0] == 0
+                                    ? '-'
+                                    : throwsList[0].toString(),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          )
+                        : null,
+                  ),
+                ),
+
+                // Second throw display
+                Expanded(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(color: Colors.grey[300]!),
+                      ),
+                    ),
+                    alignment: Alignment.center,
+                    child: throwsList.length > 1
+                        ? Text(
+                            throwsList[1] == 10
+                                ? 'X'
+                                : (throwsList[0] != 10 &&
+                                        throwsList[0] + throwsList[1] == 10)
+                                    ? '/'
+                                    : throwsList[1] == 0
+                                        ? '-'
+                                        : throwsList[1].toString(),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          )
+                        : null,
+                  ),
+                ),
+
+                // Third throw display (10th frame only)
+                if (isTenthFrame)
+                  Expanded(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        border: Border(
+                          left: BorderSide(color: Colors.grey[300]!),
+                          bottom: BorderSide(color: Colors.grey[300]!),
+                        ),
+                      ),
+                      alignment: Alignment.center,
+                      child: throwsList.length > 2
+                          ? Text(
+                              throwsList[2] == 10
+                                  ? 'X'
+                                  : (throwsList[1] == 10 ||
+                                          (throwsList[0] != 10 &&
+                                                  throwsList[0] +
+                                                          throwsList[1] ==
+                                                      10) &&
+                                              throwsList[2] + throwsList[1] ==
+                                                  10)
+                                      ? '/'
+                                      : throwsList[2] == 0
+                                          ? '-'
+                                          : throwsList[2].toString(),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              ),
+                            )
+                          : null,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+
+          // Score display area
+          Expanded(
+            flex: 2,
+            child: Container(
+              alignment: Alignment.center,
+              color: Colors.grey[100],
+              child: frame['isComplete']
+                  ? Text(
+                      '${_calculateFrameScore(frame)}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    )
+                  : null,
             ),
           ),
         ],
@@ -549,83 +763,100 @@ class LiveTrackingScreenState extends State<LiveTrackingScreen> {
     );
   }
 
-  Widget _buildFrameCell(BowlingFrame frame, bool isCurrentFrame) {
-    // Check if this might be the 10th frame based on the frameScore field
-    bool isTenthFrame = frame.frameScore == 10;
-    bool isStrike = frame.throws.isNotEmpty && frame.throws[0].isStrike;
+  int _calculateFrameScore(Map<String, dynamic> frame) {
+    // In a real implementation, this would calculate the proper score
+    // For demo purposes, we'll display a placeholder or use the running total
+    final frameIndex = frame['frameIndex'] as int;
+    final throwsList = frame['throws'] as List<dynamic>;
 
-    return Stack(
-      children: [
-        // First throw - always centered
-        if (frame.throws.isNotEmpty)
-          Positioned.fill(
-            child: Center(
-              child: Text(
-                frame.throws[0].display,
-                style: TextStyle(
-                  color: Colors.black,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16, // Consistent size for all throws
-                ),
+    // Simple sum of throws for demo
+    int score = 0;
+    for (var throwValue in throwsList) {
+      score += throwValue as int;
+    }
+
+    // Multiply by frame index to simulate a running score
+    return score * (frameIndex + 1);
+  }
+
+  Future<bool> _showExitConfirmation() async {
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Exit Tracking Mode?'),
+            content:
+                const Text('Are you sure you want to stop tracking this game?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Continue Watching'),
               ),
+              ElevatedButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.ringPrimary,
+                ),
+                child: const Text('Exit Game'),
+              ),
+            ],
+          ),
+        ) ??
+        false; // Default to false (don't exit) if dialog is dismissed
+  }
+
+  void _showGameInfo() {
+    int spectatorCount =
+        (_gameData?['spectators'] as List<dynamic>? ?? []).length;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.info_outline, color: AppColors.ringPrimary),
+            const SizedBox(width: 8),
+            const Text('Game Information'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildInfoRow('Game ID', _gameData?['roomId'] ?? 'Unknown'),
+            _buildInfoRow('Status', _gameStatus.toUpperCase()),
+            _buildInfoRow('Players', '${_gamePlayers.length}'),
+            _buildInfoRow('Spectators', '$spectatorCount'),
+            _buildInfoRow('Current Frame', '$_currentFrame'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(
+              '$label:',
+              style: const TextStyle(fontWeight: FontWeight.bold),
             ),
           ),
-
-        // Handle second throw differently for regular frames vs 10th frame
-        if (frame.throws.length > 1)
-          if (isTenthFrame)
-            // Second throw in 10th frame - top right with more padding
-            Positioned(
-              top: 2,
-              right: 4,
-              child: Container(
-                alignment: Alignment.center,
-                child: Text(
-                  frame.throws[1].display,
-                  style: const TextStyle(
-                    color: Colors.black,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 8,
-                  ),
-                ),
-              ),
-            )
-          else if (!isStrike)
-            // Second throw for regular frames
-            Positioned(
-              top: 2,
-              right: 2,
-              child: Container(
-                alignment: Alignment.center,
-                child: Text(
-                  frame.throws[1].display,
-                  style: const TextStyle(
-                    color: Colors.black,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 10,
-                  ),
-                ),
-              ),
-            ),
-
-        // Third throw (10th frame only)
-        if (isTenthFrame && frame.throws.length > 2)
-          Positioned(
-            bottom: 2,
-            right: 4,
-            child: Container(
-              alignment: Alignment.center,
-              child: Text(
-                frame.throws[2].display,
-                style: const TextStyle(
-                  color: Colors.black,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 8, // Smaller for 10th frame extra throws
-                ),
-              ),
-            ),
+          Expanded(
+            child: Text(value),
           ),
-      ],
+        ],
+      ),
     );
   }
 }

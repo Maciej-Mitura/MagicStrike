@@ -492,19 +492,8 @@ class _HomeScreenState extends State<HomeScreen> {
               }
             }
 
-            // Display shortened name if too long
+            // Display the full name without manual shortening
             String displayName = playerName;
-            // Estimate approximately how many characters can fit in the column
-            // Assume average character width is about 7-8 pixels at fontSize 13
-            final double estimatedCharWidth = 7.5;
-            final int maxChars =
-                ((nameColumnWidth - 8) / estimatedCharWidth).floor();
-
-            // Only shorten if name exceeds the available space
-            if (playerName.length > maxChars && maxChars > 3) {
-              // Leave space for ellipsis
-              displayName = '${playerName.substring(0, maxChars - 1)}...';
-            }
 
             return Padding(
               padding: const EdgeInsets.symmetric(
@@ -522,7 +511,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         color: Colors.black,
                       ),
                       maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                      overflow: TextOverflow.clip,
                     ),
                   ),
 
