@@ -97,12 +97,11 @@ class _SpectateGameScreenState extends State<SpectateGameScreen> {
 
     for (final playerData in _gamePlayers) {
       final name = playerData['firstName'] ?? 'Unknown';
-      final totalScore = playerData['totalScore'] ?? 0;
       final throwsPerFrame =
           Map<String, dynamic>.from(playerData['throwsPerFrame'] ?? {});
 
       // Process frames
-      final frames = <Map<String, dynamic>>[];
+      final List<Map<String, dynamic>> frames = [];
 
       for (int i = 1; i <= 10; i++) {
         final frameKey = i.toString();
@@ -112,9 +111,32 @@ class _SpectateGameScreenState extends State<SpectateGameScreen> {
           'frameIndex': i - 1,
           'throws': throwsList,
           'isComplete': _isFrameComplete(i, throwsList),
+          'score': 0, // Will be calculated below
         };
 
         frames.add(frame);
+      }
+
+      // Calculate scores properly using the same logic as BowlingGameModel
+      _calculateScoresForPlayer(frames);
+
+      // DEBUG: Log the calculated scores for debugging
+      String scoreLog = "Scores for $name: ";
+      for (int i = 0; i < frames.length; i++) {
+        if (frames[i]['isComplete']) {
+          scoreLog += "${frames[i]['score']}, ";
+        } else {
+          scoreLog += "-, ";
+        }
+      }
+      print(scoreLog);
+
+      // Get the final total score (from the last frame with a score)
+      int totalScore = 0;
+      for (final frame in frames) {
+        if (frame['isComplete'] && frame['score'] > totalScore) {
+          totalScore = frame['score'];
+        }
       }
 
       _processedPlayers.add({
@@ -125,6 +147,88 @@ class _SpectateGameScreenState extends State<SpectateGameScreen> {
         'isActive':
             playerData['isActive'] != false, // default to true if not specified
       });
+    }
+  }
+
+  // Calculate scores for player frames using the same logic as BowlingGameModel
+  void _calculateScoresForPlayer(List<Map<String, dynamic>> frames) {
+    int totalScore = 0;
+
+    for (int i = 0; i < frames.length; i++) {
+      final frame = frames[i];
+      final List<dynamic> throwsList = frame['throws'];
+      int frameScore = 0;
+
+      // Skip incomplete frames
+      if (!frame['isComplete']) continue;
+
+      // Add pins knocked down in this frame
+      for (int j = 0; j < throwsList.length && j < (i == 9 ? 3 : 2); j++) {
+        if (j < throwsList.length) {
+          frameScore += throwsList[j] as int;
+        }
+      }
+
+      // Add bonus for strikes and spares (except in 10th frame)
+      if (i < 9) {
+        // If this is a strike
+        if (throwsList.isNotEmpty && throwsList[0] == 10) {
+          // Strike bonus: Next two throws
+          int bonusCount = 0;
+          int nextFrameIndex = i + 1;
+
+          // Look for the next two throws
+          while (bonusCount < 2 && nextFrameIndex < frames.length) {
+            final nextFrameThrows =
+                frames[nextFrameIndex]['throws'] as List<dynamic>;
+
+            if (nextFrameThrows.isNotEmpty) {
+              // Add first throw of next frame as bonus
+              if (bonusCount < 2) {
+                frameScore += nextFrameThrows[0] as int;
+                bonusCount++;
+              }
+
+              // If first throw was strike and we need one more bonus
+              if (nextFrameThrows[0] == 10 &&
+                  bonusCount < 2 &&
+                  nextFrameIndex < 9) {
+                // Move to the next frame for second bonus
+                nextFrameIndex++;
+                continue;
+              }
+
+              // Add second throw if needed and available
+              if (nextFrameThrows.length > 1 && bonusCount < 2) {
+                frameScore += nextFrameThrows[1] as int;
+                bonusCount++;
+              }
+            }
+
+            // Move to next frame if we still need bonuses
+            nextFrameIndex++;
+          }
+        }
+        // If this is a spare
+        else if (throwsList.length >= 2 &&
+            (throwsList[0] as int) + (throwsList[1] as int) == 10) {
+          // Spare bonus: Next one throw
+          if (i + 1 < frames.length) {
+            final nextFrameThrows = frames[i + 1]['throws'] as List<dynamic>;
+            if (nextFrameThrows.isNotEmpty) {
+              frameScore += nextFrameThrows[0] as int;
+            }
+          }
+        }
+      }
+
+      // Update the total and save to frame
+      totalScore += frameScore;
+      frame['score'] = totalScore;
+
+      // Debug: Log the calculations
+      print(
+          "Frame ${i + 1}: frame score=$frameScore, total=$totalScore, ${throwsList.isEmpty ? 'no throws' : throwsList.join(',')}");
     }
   }
 
@@ -370,10 +474,6 @@ class _SpectateGameScreenState extends State<SpectateGameScreen> {
   }
 
   Widget _buildScoreboard() {
-    // This will need to be implemented to display the scoring grid for all players
-    // For brevity, I'm omitting the detailed implementation here, but it would be
-    // very similar to the _buildScoreboard method in the BowlingGameScreen
-
     return Column(
       children: [
         // Current player indicator
@@ -426,11 +526,12 @@ class _SpectateGameScreenState extends State<SpectateGameScreen> {
                   ),
                   const SizedBox(height: 8),
 
-                  // Display simplified frame data (could be expanded in the future)
+                  // Display frame data with proper scores
                   Table(
                     border: TableBorder.all(),
                     defaultColumnWidth: const IntrinsicColumnWidth(),
                     children: [
+                      // Frame headers row
                       TableRow(
                         decoration: BoxDecoration(
                           color: Colors.grey[200],
@@ -443,6 +544,8 @@ class _SpectateGameScreenState extends State<SpectateGameScreen> {
                                     child: Text(
                                       '${i + 1}',
                                       textAlign: TextAlign.center,
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.bold),
                                     ),
                                   ),
                                 )),
@@ -484,6 +587,36 @@ class _SpectateGameScreenState extends State<SpectateGameScreen> {
                               child: Text(
                                 display,
                                 textAlign: TextAlign.center,
+                              ),
+                            ),
+                          );
+                        }),
+                      ),
+                      // Scores row
+                      TableRow(
+                        decoration: BoxDecoration(
+                          color: Colors.grey[100],
+                        ),
+                        children: List.generate(10, (i) {
+                          final frame = player['frames'][i];
+                          final isComplete = frame['isComplete'] as bool;
+
+                          return TableCell(
+                            child: Container(
+                              padding: const EdgeInsets.all(4.0),
+                              color: isComplete
+                                  ? Colors.grey[200]
+                                  : Colors.transparent,
+                              child: Text(
+                                isComplete ? '${frame['score']}' : '',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12,
+                                  color: isComplete
+                                      ? AppColors.ringPrimary
+                                      : Colors.grey,
+                                ),
                               ),
                             ),
                           );

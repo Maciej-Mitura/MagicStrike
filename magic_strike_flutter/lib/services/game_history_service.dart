@@ -83,18 +83,39 @@ class GameHistoryService {
             formattedTime = _timeFormatter.format(date);
           }
 
-          // Calculate duration if startTime and endTime exist
+          // Calculate duration from the duration field (in seconds)
           String duration = 'N/A';
-          if (gameData['startTime'] is Timestamp &&
-              gameData['endTime'] is Timestamp) {
+          if (gameData['duration'] != null) {
+            // Use the duration field directly (already in seconds)
+            final int durationSeconds = gameData['duration'] is int
+                ? gameData['duration']
+                : int.tryParse(gameData['duration'].toString()) ?? 0;
+
+            // Calculate hours and minutes
+            final int hours = durationSeconds ~/ 3600;
+            final int minutes = (durationSeconds % 3600) ~/ 60;
+
+            // Format as hours:minutes
+            if (hours > 0) {
+              duration = '$hours:${minutes.toString().padLeft(2, '0')}';
+            } else {
+              duration = '$minutes min';
+            }
+          } else if (gameData['startTime'] is Timestamp &&
+              gameData['finishedAt'] is Timestamp) {
+            // Fallback to calculating from timestamps if available
             final startTime = (gameData['startTime'] as Timestamp).toDate();
-            final endTime = (gameData['endTime'] as Timestamp).toDate();
+            final endTime = (gameData['finishedAt'] as Timestamp).toDate();
 
             final difference = endTime.difference(startTime);
             final hours = difference.inHours;
             final minutes = difference.inMinutes % 60;
 
-            duration = '${hours}h ${minutes}m';
+            if (hours > 0) {
+              duration = '$hours:${minutes.toString().padLeft(2, '0')}';
+            } else {
+              duration = '$minutes min';
+            }
           }
 
           // Determine winner (player with highest score)

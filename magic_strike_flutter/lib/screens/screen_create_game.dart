@@ -256,7 +256,7 @@ class _CreateGameScreenState extends State<CreateGameScreen> {
       });
 
       try {
-        // Update game status in Firestore to indicate it has started
+        // Find the game document with this roomId
         final QuerySnapshot gameQuery = await FirebaseFirestore.instance
             .collection('games')
             .where('roomId', isEqualTo: _gameCode)
@@ -269,8 +269,12 @@ class _CreateGameScreenState extends State<CreateGameScreen> {
 
         final gameDoc = gameQuery.docs.first;
 
-        // Set status to 'in_progress'
-        await gameDoc.reference.update({'status': 'in_progress'});
+        // Set status to 'in_progress' and update startTime to current time
+        await gameDoc.reference.update({
+          'status': 'in_progress',
+          'startTime': FieldValue
+              .serverTimestamp(), // Set actual start time when game begins
+        });
 
         // Get player names for the BowlingGameScreen
         final playerNames =
@@ -313,7 +317,7 @@ class _CreateGameScreenState extends State<CreateGameScreen> {
         throw Exception('Creator deRingID is not available');
       }
 
-      // Current time for start time
+      // Current time for creation time
       final now = DateTime.now();
 
       // Create empty throwsPerFrame structure for a new game
@@ -333,9 +337,9 @@ class _CreateGameScreenState extends State<CreateGameScreen> {
       // Create game document with the exact structure from the requirements
       final gameData = {
         'date': now,
-        'duration': 3600, // Default duration: 1 hour (in seconds)
-        'endTime': now
-            .add(const Duration(minutes: 60)), // Default end time: 1 hour later
+        'duration':
+            0, // Default duration: will be calculated when game is saved
+        'startTime': now, // Use startTime instead of endTime for game start
         'location': 'Bowling DeRing', // Default location
         'roomId': _gameCode,
         'status':

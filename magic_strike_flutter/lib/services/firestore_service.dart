@@ -76,6 +76,11 @@ class FirestoreService {
     required String location,
     required List<Map<String, dynamic>> players,
     DateTime? date,
+    Timestamp? createdAt,
+    Timestamp? startTime,
+    DateTime? finishedAt,
+    Timestamp? finishedAtTimestamp,
+    int? durationSeconds,
   }) async {
     try {
       // Get current user's deRingID and firstName
@@ -88,6 +93,16 @@ class FirestoreService {
         return null;
       }
 
+      // Handle finished timestamp - prefer the timestamp if provided
+      dynamic finishedValue;
+      if (finishedAtTimestamp != null) {
+        finishedValue = finishedAtTimestamp;
+      } else if (finishedAt != null) {
+        finishedValue = Timestamp.fromDate(finishedAt);
+      } else {
+        finishedValue = FieldValue.serverTimestamp();
+      }
+
       // Save game document to Firestore
       final docRef = await _firestore.collection('games').add({
         'location': location,
@@ -95,7 +110,10 @@ class FirestoreService {
         'players': players,
         'createdBy': deRingID,
         'creatorName': firstName,
-        'createdAt': FieldValue.serverTimestamp(),
+        'createdAt': createdAt ?? FieldValue.serverTimestamp(),
+        'startTime': startTime ?? createdAt ?? FieldValue.serverTimestamp(),
+        'finishedAt': finishedValue,
+        'duration': durationSeconds ?? 0,
       });
 
       print('Game saved with ID: ${docRef.id}');
@@ -132,6 +150,8 @@ class FirestoreService {
         print('addPlayerToGameRoom: Missing deRingID or firstName');
         return false;
       }
+
+      print('Adding player to game - Name: $firstName, DeRingID: $deRingID');
 
       // Find the game document with this roomId
       final QuerySnapshot gamesQuery = await _firestore
@@ -208,7 +228,8 @@ class FirestoreService {
       // Update the game document
       await gameDoc.reference.update({'players': gamePlayers});
 
-      print('Added player $firstName to game with roomId: $roomID');
+      print(
+          'Added player $firstName with ID $deRingID to game with roomId: $roomID');
       return true;
     } catch (e) {
       print('Error adding player to game: $e');

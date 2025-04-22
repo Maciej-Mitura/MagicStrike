@@ -160,6 +160,8 @@ class UserService {
     try {
       // Return cached values if available
       if (_currentUserDeRingID != null && _currentUserFirstName != null) {
+        print(
+            'Returning cached user data: $_currentUserFirstName ($_currentUserDeRingID)');
         return {
           'deRingID': _currentUserDeRingID,
           'firstName': _currentUserFirstName,
@@ -168,12 +170,14 @@ class UserService {
 
       final User? currentUser = _auth.currentUser;
       if (currentUser == null) {
+        print('getCurrentUserData: No user is currently logged in');
         return {
           'deRingID': null,
           'firstName': null,
         };
       }
 
+      print('Fetching user data for UID: ${currentUser.uid}');
       final userDoc =
           await _firestore.collection('users').doc(currentUser.uid).get();
 
@@ -186,16 +190,19 @@ class UserService {
         _currentUserDeRingID = deRingID;
         _currentUserFirstName = firstName;
 
+        print('Fetched user data from Firestore: $firstName ($deRingID)');
         return {
           'deRingID': deRingID,
           'firstName': firstName,
         };
-      }
+      } else {
+        print(
+            'User document not found in Firestore for UID: ${currentUser.uid}');
 
-      return {
-        'deRingID': null,
-        'firstName': null,
-      };
+        // If the document doesn't exist, try to initialize it
+        print('Attempting to initialize user data...');
+        return await initializeUserData();
+      }
     } catch (e) {
       print('Error getting current user data: $e');
       return {

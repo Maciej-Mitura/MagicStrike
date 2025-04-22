@@ -18,6 +18,7 @@ class _JoinGameScreenState extends State<JoinGameScreen> {
   String? _deRingID; // Store user's ID
   final _formKey = GlobalKey<FormState>();
   bool _isJoining = false;
+  bool _isLoadingUserData = true; // Track if user data is still loading
   String? _errorMessage;
   final FirestoreService _firestoreService = FirestoreService();
   final UserService _userService = UserService();
@@ -29,11 +30,47 @@ class _JoinGameScreenState extends State<JoinGameScreen> {
   }
 
   Future<void> _loadUserData() async {
-    final userData = await _userService.getCurrentUserData();
     setState(() {
-      _playerName = userData['firstName'] ?? 'User123';
-      _deRingID = userData['deRingID'];
+      _isLoadingUserData = true;
     });
+
+    try {
+      final userData = await _userService.getCurrentUserData();
+
+      if (mounted) {
+        setState(() {
+          _playerName = userData['firstName'] ?? 'User123';
+          _deRingID = userData['deRingID'];
+          _isLoadingUserData = false;
+        });
+
+        print('Loaded user data - Name: $_playerName, DeRingID: $_deRingID');
+
+        // If deRingID is still null, try to initialize user data
+        if (_deRingID == null) {
+          print('DeRingID is null, initializing user data...');
+          final initializedData = await _userService.initializeUserData();
+
+          if (mounted) {
+            setState(() {
+              _playerName = initializedData['firstName'] ?? 'User123';
+              _deRingID = initializedData['deRingID'];
+              _isLoadingUserData = false;
+            });
+
+            print(
+                'Initialized user data - Name: $_playerName, DeRingID: $_deRingID');
+          }
+        }
+      }
+    } catch (e) {
+      print('Error loading user data: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingUserData = false;
+        });
+      }
+    }
   }
 
   @override
@@ -43,6 +80,22 @@ class _JoinGameScreenState extends State<JoinGameScreen> {
   }
 
   Future<void> _joinGame() async {
+    // Don't proceed if we're still loading user data or if user ID is missing
+    if (_isLoadingUserData) {
+      setState(() {
+        _errorMessage = 'Still loading user data, please wait...';
+      });
+      return;
+    }
+
+    if (_deRingID == null) {
+      setState(() {
+        _errorMessage =
+            'User data not available. Please try again or restart the app.';
+      });
+      return;
+    }
+
     if (_formKey.currentState!.validate()) {
       setState(() {
         _isJoining = true;
@@ -50,13 +103,11 @@ class _JoinGameScreenState extends State<JoinGameScreen> {
       });
 
       try {
-        // Make sure we have user data
-        if (_deRingID == null) {
-          throw Exception('User data not available');
-        }
-
         // Get room code
         final roomCode = _codeController.text.trim();
+
+        print(
+            'Attempting to join game $roomCode with user $_playerName (ID: $_deRingID)');
 
         // Check if the game exists
         final QuerySnapshot gameQuery = await FirebaseFirestore.instance
@@ -150,7 +201,7 @@ class _JoinGameScreenState extends State<JoinGameScreen> {
         ),
         elevation: 0,
       ),
-      body: _isJoining
+      body: _isJoining || _isLoadingUserData
           ? _buildLoadingState()
           : SingleChildScrollView(
               child: Padding(
@@ -327,7 +378,9 @@ class _JoinGameScreenState extends State<JoinGameScreen> {
           const CircularProgressIndicator(),
           const SizedBox(height: 24),
           Text(
-            'Joining game room...',
+            _isLoadingUserData
+                ? 'Loading user data...'
+                : 'Joining game room...',
             style: TextStyle(
               fontSize: 18,
               color: AppColors.ringPrimary,

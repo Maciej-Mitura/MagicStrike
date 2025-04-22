@@ -368,7 +368,11 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
 
           // Update the game model with the new players if needed
           if (playerNames.isNotEmpty) {
-            if (playerNames.length != _game.players.length) {
+            bool shouldRecreateModel =
+                playerNames.length != _game.players.length;
+
+            // Check if we need to update the player list (new players joined)
+            if (shouldRecreateModel) {
               // Players list changed - create a new game model
               _game = BowlingGameModel(
                 roomCode: widget.gameCode,
@@ -396,6 +400,9 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
               _game.currentThrow = gameData['currentThrow'] ?? 1;
             }
 
+            // ALWAYS calculate scores using the game model's method to ensure consistency
+            _game._calculateScores();
+
             // Check if game is marked as completed
             final String gameStatus = gameData['status'] ?? 'waiting';
             if (gameStatus == 'completed' && widget.isAdmin) {
@@ -412,6 +419,16 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
                 );
               }
             }
+          }
+
+          // For spectators, ensure we have the most up-to-date scores
+          if (!widget.isAdmin) {
+            // Use the EXACT SAME method that admin/player view uses to update frames
+            // This ensures frame data is processed exactly the same way for all users
+            _updatePlayerFramesFromFirestore(players);
+
+            // Debug print for spectator view
+            _debugPrintScores("Spectator view");
           }
         });
       }
@@ -448,6 +465,7 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
           if (frameThrows.isNotEmpty && frameThrows.length >= 1) {
             frame.firstThrow = frameThrows[0];
           }
+          // Leave as null otherwise - don't initialize with 0
 
           if (frameThrows.isNotEmpty && frameThrows.length >= 2) {
             frame.secondThrow = frameThrows[1];
@@ -465,8 +483,32 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
       }
     }
 
-    // Calculate scores after updating frames
+    // Always use the game model's score calculation to ensure consistency
     _game._calculateScores();
+
+    // Debug print for admin view
+    if (widget.isAdmin) {
+      _debugPrintScores("Admin view");
+    }
+  }
+
+  // Helper method to debug print scores and frame data
+  void _debugPrintScores(String viewType) {
+    print("$viewType: Scores calculated");
+    for (final player in _game.players) {
+      StringBuffer frameDebug = StringBuffer("${player.name} frames: ");
+      StringBuffer scoreDebug = StringBuffer("${player.name} scores: ");
+
+      for (int i = 0; i < player.frames.length && i < 10; i++) {
+        final frame = player.frames[i];
+        frameDebug.write(
+            "[${frame.firstThrow},${frame.secondThrow},${frame.thirdThrow}] ");
+        scoreDebug.write("${frame.score}, ");
+      }
+
+      print(frameDebug.toString());
+      print(scoreDebug.toString());
+    }
   }
 
   @override
@@ -833,24 +875,27 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
                         ),
                       ),
                       alignment: Alignment.center,
-                      child: frame.secondThrow != null
-                          ? Text(
-                              frame.secondThrow == 10
-                                  ? 'X'
-                                  : (frame.firstThrow != null &&
-                                          frame.firstThrow! +
-                                                  frame.secondThrow! ==
-                                              10)
-                                      ? '/'
-                                      : frame.secondThrow == 0
-                                          ? '-'
-                                          : frame.secondThrow.toString(),
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14,
-                              ),
-                            )
-                          : null,
+                      child: (frame.firstThrow == 10 && !isTenthFrame)
+                          ? null // If strike in frames 1-9, leave second box empty
+                          : (frame.secondThrow != null
+                              ? Text(
+                                  frame.secondThrow == 10 &&
+                                          frame.firstThrow == 10
+                                      ? 'X'
+                                      : (frame.firstThrow != null &&
+                                              frame.firstThrow! +
+                                                      frame.secondThrow! ==
+                                                  10)
+                                          ? '/'
+                                          : frame.secondThrow == 0
+                                              ? '-'
+                                              : frame.secondThrow.toString(),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                  ),
+                                )
+                              : null),
                     ),
                   ),
 
@@ -898,9 +943,11 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
                 child: frame.isComplete
                     ? Text(
                         '${frame.score}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontWeight: FontWeight.bold,
-                          fontSize: 12,
+                          fontSize: frame.score >= 100
+                              ? 10
+                              : 12, // Smaller font for 3+ digits
                         ),
                       )
                     : null,
@@ -1096,6 +1143,47 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
               ),
             ),
           ),
+
+          // Strike button in the other corner
+          Positioned(
+            top: 0,
+            left: 0,
+            child: Tooltip(
+              message: "Record a strike (all 10 pins)",
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: _recordStrike,
+                  borderRadius: BorderRadius.circular(20),
+                  splashFactory: NoSplash.splashFactory,
+                  highlightColor: Colors.transparent,
+                  child: Container(
+                    padding: const EdgeInsets.all(8.0),
+                    decoration: BoxDecoration(
+                      color: AppColors.ringPrimary.withAlpha(51),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.whatshot,
+                            size: 18, color: AppColors.ringPrimary),
+                        const SizedBox(width: 4),
+                        const Text(
+                          'Strike',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.ringPrimary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -1195,7 +1283,7 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
     return true;
   }
 
-  // Update the game status to 'completed' in Firestore
+  // Update the game status to 'completed' in Firestore and set finishedAt timestamp
   Future<void> _markGameAsCompleted() async {
     if (!widget.isAdmin) return;
 
@@ -1214,9 +1302,11 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
 
       final gameDoc = querySnapshot.docs.first;
 
-      // Set status to 'completed'
-      await gameDoc.reference.update({'status': 'completed'});
-      print('Game marked as completed');
+      // Set status to 'completed' and add finishedAt timestamp
+      await gameDoc.reference.update(
+          {'status': 'completed', 'finishedAt': FieldValue.serverTimestamp()});
+
+      print('Game marked as completed with finishedAt timestamp');
     } catch (e) {
       print('Error marking game as completed: $e');
     }
@@ -1545,7 +1635,13 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
       throwsPerFrame[frameKey] = frameThrows;
       players[playerIndex]['throwsPerFrame'] = throwsPerFrame;
 
-      // Calculate scores using model methods
+      // Create temporary game model to calculate scores
+      BowlingGameModel tempGame = BowlingGameModel(
+        roomCode: widget.gameCode,
+        players: [],
+      );
+
+      // Add all players with their frames
       for (var i = 0; i < players.length; i++) {
         final currentPlayer = BowlingPlayer(
           id: players[i]['userId'] ?? players[i]['firstName'],
@@ -1575,18 +1671,26 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
           currentPlayer.frames.add(frame);
         }
 
-        // Calculate scores for this player
-        _calculateScoresForPlayer(currentPlayer);
+        tempGame.players.add(currentPlayer);
+      }
 
-        // Update totalScore in the Firestore data
-        if (player.frames.isNotEmpty) {
-          final lastFrameWithScore =
-              player.frames.lastWhere((frame) => frame.score > 0, orElse: () {
-            return BowlingFrame(frameIndex: 0);
-          });
+      // Calculate scores consistently using the game model's method
+      tempGame._calculateScores();
 
-          players[playerIndex]['totalScore'] = lastFrameWithScore.score;
+      // Update totalScores in Firestore data
+      for (int i = 0; i < tempGame.players.length; i++) {
+        final currentPlayer = tempGame.players[i];
+
+        // Find highest score from completed frames
+        int highestScore = 0;
+        for (final frame in currentPlayer.frames) {
+          if (frame.isComplete && frame.score > highestScore) {
+            highestScore = frame.score;
+          }
         }
+
+        // Update the player's total score
+        players[i]['totalScore'] = highestScore;
       }
 
       // Ensure currentFrame never exceeds 10
@@ -1676,39 +1780,23 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
         frame['thirdThrow'] = pinsDown;
       }
 
-      // Recalculate scores for the entire game
-      for (var i = 0; i < players.length; i++) {
-        final currentPlayer = BowlingPlayer(
-          id: players[i]['id'],
-          name: players[i]['name'],
-          frames: [],
-        );
+      // Use the game model's _calculateScores method to ensure consistent scoring
+      _game._calculateScores();
 
-        // Convert frames from map to BowlingFrame objects
-        for (var frameData in players[i]['frames']) {
-          final frame = BowlingFrame(frameIndex: frameData['frameIndex']);
-          frame.firstThrow = frameData['firstThrow'];
-          frame.secondThrow = frameData['secondThrow'];
-          frame.thirdThrow = frameData['thirdThrow'];
-          currentPlayer.frames.add(frame);
+      // Update the frame scores back to the Firestore data
+      for (int i = 0; i < player.frames.length; i++) {
+        if (i < players[playerIndex]['frames'].length) {
+          players[playerIndex]['frames'][i]['score'] = player.frames[i].score;
         }
-
-        // Calculate scores
-        _calculateScoresForPlayer(currentPlayer);
-
-        // Update the frame scores back to the Firestore data
-        for (var j = 0; j < currentPlayer.frames.length; j++) {
-          players[i]['frames'][j]['score'] = currentPlayer.frames[j].score;
-        }
-
-        // Get the highest frame that has a score
-        final lastFrameWithScore = currentPlayer.frames
-            .lastWhere((frame) => frame.score > 0, orElse: () {
-          return BowlingFrame(frameIndex: 0);
-        });
-
-        players[i]['totalScore'] = lastFrameWithScore.score;
       }
+
+      // Get the highest frame that has a score
+      final lastFrameWithScore =
+          player.frames.lastWhere((frame) => frame.score > 0, orElse: () {
+        return BowlingFrame(frameIndex: 0);
+      });
+
+      players[playerIndex]['totalScore'] = lastFrameWithScore.score;
 
       // Create the updated game data
       final Map<String, dynamic> updatedGameData = {
@@ -1725,90 +1813,6 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
       print('Error updating edited frame in Firestore: $e');
       return player.frames[frameNumber - 1];
     }
-  }
-
-  // Calculate scores for a player - similar to the game model's _calculateScores method
-  void _calculateScoresForPlayer(BowlingPlayer player) {
-    int totalScore = 0;
-
-    for (int i = 0; i < player.frames.length; i++) {
-      final frame = player.frames[i];
-      frame.score = 0;
-
-      // Basic score for this frame
-      int frameScore = 0;
-
-      // First throw
-      if (frame.firstThrow != null) {
-        frameScore += frame.firstThrow!;
-      }
-
-      // Second throw
-      if (frame.secondThrow != null) {
-        frameScore += frame.secondThrow!;
-      }
-
-      // Third throw (10th frame only)
-      if (i == 9 && frame.thirdThrow != null) {
-        frameScore += frame.thirdThrow!;
-      }
-
-      // Add strike/spare bonuses for frames 1-9
-      if (i < 9) {
-        // Strike bonus - next two throws
-        if (frame.isStrike) {
-          // Get next throw
-          int? nextThrow = _getNextThrow(player, i);
-          if (nextThrow != null) frameScore += nextThrow;
-
-          // Get second next throw
-          int? secondNextThrow = _getSecondNextThrow(player, i);
-          if (secondNextThrow != null) frameScore += secondNextThrow;
-        }
-        // Spare bonus - next throw
-        else if (frame.isSpare) {
-          int? nextThrow = _getNextThrow(player, i);
-          if (nextThrow != null) frameScore += nextThrow;
-        }
-      }
-
-      // Add frame score to total
-      totalScore += frameScore;
-      frame.score = totalScore;
-    }
-  }
-
-  // Get the next throw after a given frame
-  int? _getNextThrow(BowlingPlayer player, int frameIndex) {
-    // Next frame exists
-    if (frameIndex + 1 < player.frames.length) {
-      final nextFrame = player.frames[frameIndex + 1];
-
-      // Return first throw of next frame
-      return nextFrame.firstThrow;
-    }
-
-    return null;
-  }
-
-  // Get the second next throw after a given frame
-  int? _getSecondNextThrow(BowlingPlayer player, int frameIndex) {
-    // If the next frame is a strike, we need to look at the frame after that
-    if (frameIndex + 1 < player.frames.length) {
-      final nextFrame = player.frames[frameIndex + 1];
-
-      if (nextFrame.isStrike) {
-        // If next frame is a strike, look at first throw of the frame after
-        if (frameIndex + 2 < player.frames.length) {
-          return player.frames[frameIndex + 2].firstThrow;
-        }
-      } else {
-        // Otherwise, return second throw of next frame
-        return nextFrame.secondThrow;
-      }
-    }
-
-    return null;
   }
 
   void _setupForSecondThrow() {
@@ -2132,11 +2136,80 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
         throw Exception('Unable to save game: User data not available');
       }
 
+      // Get original live game to retrieve player IDs and timestamps
+      final QuerySnapshot gameQuery = await FirebaseFirestore.instance
+          .collection('games')
+          .where('roomId', isEqualTo: widget.gameCode)
+          .limit(1)
+          .get();
+
+      Map<String, dynamic>? originalGame;
+      List<dynamic> originalPlayers = [];
+      Timestamp? createdAt;
+      Timestamp? startTime;
+      Timestamp? finishedAt;
+
+      if (gameQuery.docs.isNotEmpty) {
+        originalGame = gameQuery.docs.first.data() as Map<String, dynamic>;
+        originalPlayers = List.from(originalGame['players'] ?? []);
+
+        // Get the original creation time and timestamps from the live game document
+        if (originalGame['createdAt'] != null) {
+          createdAt = originalGame['createdAt'] as Timestamp;
+        }
+
+        if (originalGame['startTime'] != null) {
+          startTime = originalGame['startTime'] as Timestamp;
+        }
+
+        if (originalGame['finishedAt'] != null) {
+          finishedAt = originalGame['finishedAt'] as Timestamp;
+        }
+      }
+
+      // Current timestamp for finishedAt if not already set
+      final DateTime now = DateTime.now();
+      final Timestamp nowTimestamp = Timestamp.fromDate(now);
+
+      // Calculate duration in seconds
+      int durationSeconds = 0;
+      if (startTime != null) {
+        if (finishedAt != null) {
+          // If finishedAt is already set, use it for duration calculation
+          durationSeconds = finishedAt.seconds - startTime.seconds;
+        } else {
+          // If finishedAt isn't set yet, use current time
+          durationSeconds = nowTimestamp.seconds - startTime.seconds;
+        }
+
+        print('Calculated game duration: $durationSeconds seconds');
+      }
+
+      // Helper function to find original player ID by name
+      String getUserIdByName(String playerName) {
+        // First check if we have the original player data
+        if (originalPlayers.isNotEmpty) {
+          for (final player in originalPlayers) {
+            if (player['firstName'] == playerName) {
+              return player['userId'];
+            }
+          }
+        }
+
+        // If this is the current user, use their ID
+        if (playerName == firstName) {
+          return deRingID;
+        }
+
+        // Fallback to guest ID only if absolutely necessary
+        return 'Guest-${DateTime.now().millisecondsSinceEpoch}';
+      }
+
       // Format players data for Firestore
       final List<Map<String, dynamic>> playersData =
           _game.players.map((player) {
-        // Determine if this is the current user
-        final bool isCurrentUser = player.name == firstName;
+        // Get the correct userId for this player
+        final String userId = getUserIdByName(player.name);
 
         // For better data structure, convert frames to a map
         final Map<String, List<int>> throwsPerFrame = {};
@@ -2150,21 +2223,24 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
         }
 
         return {
-          'userId': isCurrentUser
-              ? deRingID
-              : 'Guest-${DateTime.now().millisecondsSinceEpoch}',
+          'userId': userId,
           'firstName': player.name,
           'totalScore': player.frames.isNotEmpty ? player.frames.last.score : 0,
           'throwsPerFrame': throwsPerFrame,
         };
       }).toList();
 
-      // Save game to Firestore
+      // Save game to Firestore with the original timestamps and calculated duration
       final gameId = await firestoreService.saveGame(
         // Use "Bowling DeRing" as default if no location provided
         location: location.isNotEmpty ? location : 'Bowling DeRing',
         players: playersData,
         date: DateTime.now(),
+        createdAt: createdAt,
+        startTime: startTime,
+        finishedAt: null, // Don't pass a DateTime value, use Timestamp instead
+        finishedAtTimestamp: finishedAt, // Pass the original Timestamp directly
+        durationSeconds: durationSeconds,
       );
 
       if (gameId == null) {
@@ -2272,6 +2348,32 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
     });
 
     // Submit a throw with 0 pins
+    _submitThrow();
+  }
+
+  // Add method for recording a strike
+  void _recordStrike() {
+    // If this is the second throw, it should be treated as a spare (only remaining pins)
+    if (_game.currentThrow == 2) {
+      // Set only the REMAINING pins as knocked down
+      setState(() {
+        for (int i = 0; i < 10; i++) {
+          // Only set pins that weren't already knocked down
+          if (!_previouslyKnockedPins[i]) {
+            _pinStates[i] = true;
+          }
+        }
+        _pinsDown = _remainingPins;
+      });
+    } else {
+      // For first throw or third throw in 10th frame, select all pins as knocked down
+      setState(() {
+        _pinStates = List.generate(10, (_) => true);
+        _pinsDown = 10;
+      });
+    }
+
+    // Submit the throw
     _submitThrow();
   }
 
