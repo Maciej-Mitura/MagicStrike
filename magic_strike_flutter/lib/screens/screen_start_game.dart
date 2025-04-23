@@ -79,6 +79,7 @@ class StartGameScreen extends StatelessWidget {
                       ),
                       minimumSize: Size(buttonWidth, 60),
                       elevation: 0,
+                      shadowColor: Colors.transparent,
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -119,6 +120,7 @@ class StartGameScreen extends StatelessWidget {
                       ),
                       minimumSize: Size(buttonWidth, 60),
                       elevation: 0,
+                      shadowColor: Colors.transparent,
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,

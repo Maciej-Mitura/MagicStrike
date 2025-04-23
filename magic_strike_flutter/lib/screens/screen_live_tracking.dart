@@ -213,10 +213,12 @@ class LiveTrackingScreenState extends State<LiveTrackingScreen> {
         backgroundColor: Colors.white,
         appBar: _gameData == null
             ? AppBar(
+                scrolledUnderElevation: 0,
                 title: const Text('Live Tracking'),
                 centerTitle: true,
               )
             : AppBar(
+                scrolledUnderElevation: 0,
                 backgroundColor: AppColors.ringPrimary,
                 foregroundColor: Colors.white,
                 title: Column(
@@ -313,6 +315,8 @@ class LiveTrackingScreenState extends State<LiveTrackingScreen> {
                   backgroundColor: AppColors.ringPrimary,
                   foregroundColor: Colors.white,
                   elevation: 0, // No drop shadow
+                  shadowColor:
+                      Colors.transparent, // Prevents shadow when pressed
                   padding:
                       const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
                   shape: RoundedRectangleBorder(
@@ -795,6 +799,10 @@ class LiveTrackingScreenState extends State<LiveTrackingScreen> {
                 onPressed: () => Navigator.of(context).pop(true),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.ringPrimary,
+                  foregroundColor: Colors.white,
+                  elevation: 0, // No drop shadow
+                  shadowColor:
+                      Colors.transparent, // Prevents shadow when pressed
                 ),
                 child: const Text('Exit Game'),
               ),

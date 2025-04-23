@@ -1,5 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
+import 'dart:typed_data';
+import 'package:permission_handler/permission_handler.dart';
 
 class UserService {
   // Singleton pattern
@@ -69,6 +75,9 @@ class UserService {
         // Store values in memory
         _currentUserDeRingID = deRingID;
         _currentUserFirstName = storedFirstName ?? '';
+
+        // Make sure we have the profile picture loaded
+        await _loadProfilePictureOnLogin(uid);
 
         return {
           'deRingID': deRingID,
@@ -299,6 +308,324 @@ class UserService {
       }
     } catch (e) {
       print('Error updating games with new name: $e');
+    }
+  }
+
+  /// Upload a profile picture to Firebase Storage and update the user document
+  Future<String?> uploadProfilePicture(XFile imageFile) async {
+    try {
+      final User? currentUser = _auth.currentUser;
+      if (currentUser == null) {
+        throw Exception('No user is currently logged in');
+      }
+
+      final String uid = currentUser.uid;
+      final File file = File(imageFile.path);
+
+      // Check if file exists and has data
+      if (!file.existsSync()) {
+        throw Exception('File does not exist');
+      }
+
+      final fileSize = await file.length();
+      if (fileSize == 0) {
+        throw Exception('File is empty');
+      }
+
+      print('Uploading file: ${file.path}, size: $fileSize bytes');
+
+      // Create a reference to the location where the file should be uploaded
+      final storageReference = FirebaseStorage.instance
+          .ref()
+          .child('profile_pictures')
+          .child('$uid.jpg');
+
+      // Set metadata with content type
+      final metadata = SettableMetadata(
+        contentType: 'image/jpeg',
+        customMetadata: {'userId': uid},
+      );
+
+      try {
+        // Upload the file to Firebase Storage with explicit timeout
+        final UploadTask uploadTask = storageReference.putFile(file, metadata);
+
+        // Monitor upload progress
+        uploadTask.snapshotEvents.listen((TaskSnapshot snapshot) {
+          final progress = snapshot.bytesTransferred / snapshot.totalBytes;
+          print('Upload progress: ${(progress * 100).toStringAsFixed(2)}%');
+        }, onError: (e) {
+          print('Upload task error: $e');
+        });
+
+        // Wait for the upload to complete with timeout
+        final TaskSnapshot taskSnapshot = await uploadTask.timeout(
+          const Duration(minutes: 2),
+          onTimeout: () {
+            print('Upload timed out, cancelling task');
+            uploadTask.cancel();
+            throw Exception('Upload timed out after 2 minutes');
+          },
+        );
+
+        print('Upload completed, getting download URL');
+
+        // Get the download URL
+        final String downloadUrl = await taskSnapshot.ref.getDownloadURL();
+        print('Download URL obtained: $downloadUrl');
+
+        // Update the user document in Firestore with the download URL
+        await _firestore.collection('users').doc(uid).update({
+          'profilePicture': downloadUrl,
+          // Remove any base64 image to avoid conflicts
+          'profilePictureBase64': FieldValue.delete(),
+        });
+
+        print('User document updated with new profile picture URL');
+
+        // Force notification that profile picture has been updated
+        await _loadProfilePictureOnLogin(uid);
+
+        return downloadUrl;
+      } catch (uploadError) {
+        print('Primary upload method failed: $uploadError');
+        print('Trying alternative upload method...');
+        return await _tryAlternativeUpload(file, uid);
+      }
+    } catch (e) {
+      print('Error uploading profile picture: $e');
+      return null;
+    }
+  }
+
+  /// Alternative upload method in case the main one fails
+  Future<String?> _tryAlternativeUpload(File file, String uid) async {
+    try {
+      // Use a different path to avoid conflicts
+      final storageReference = FirebaseStorage.instance
+          .ref()
+          .child('profile_pictures_alt')
+          .child('${uid}_${DateTime.now().millisecondsSinceEpoch}.jpg');
+
+      // Read the file as bytes
+      final List<int> bytes = await file.readAsBytes();
+
+      // Upload as bytes instead of File object
+      final UploadTask uploadTask = storageReference.putData(
+        Uint8List.fromList(bytes),
+        SettableMetadata(contentType: 'image/jpeg'),
+      );
+
+      print('Alternative upload started...');
+
+      // Wait for completion
+      final TaskSnapshot taskSnapshot = await uploadTask;
+      print('Alternative upload completed');
+
+      // Get URL
+      final String downloadUrl = await taskSnapshot.ref.getDownloadURL();
+      print('Alternative download URL: $downloadUrl');
+
+      // Update user document
+      await _firestore.collection('users').doc(uid).update({
+        'profilePicture': downloadUrl,
+      });
+
+      return downloadUrl;
+    } catch (e) {
+      print('Alternative upload also failed: $e');
+      return null;
+    }
+  }
+
+  /// Get the user's profile picture URL
+  Future<String?> getProfilePictureUrl() async {
+    try {
+      final User? currentUser = _auth.currentUser;
+      if (currentUser == null) {
+        return null;
+      }
+
+      final userDoc =
+          await _firestore.collection('users').doc(currentUser.uid).get();
+      if (userDoc.exists) {
+        final userData = userDoc.data();
+        return userData?['profilePicture'] as String?;
+      }
+      return null;
+    } catch (e) {
+      print('Error getting profile picture URL: $e');
+      return null;
+    }
+  }
+
+  /// Check and request permissions needed for picking images
+  Future<bool> _checkAndRequestPermissions() async {
+    try {
+      if (Platform.isAndroid) {
+        print('Checking Android permissions...');
+        bool hasPermission = false;
+
+        // For Android 13+ (API level 33+)
+        if (await Permission.photos.status.isGranted) {
+          print('Photos permission already granted');
+          hasPermission = true;
+        } else {
+          print('Requesting photos permission...');
+          final status = await Permission.photos.request();
+          if (status.isGranted) {
+            print('Photos permission granted');
+            hasPermission = true;
+          } else {
+            print('Photos permission denied');
+          }
+        }
+
+        // For older Android versions
+        if (!hasPermission && await Permission.storage.status.isGranted) {
+          print('Storage permission already granted');
+          hasPermission = true;
+        } else if (!hasPermission) {
+          print('Requesting storage permission...');
+          final status = await Permission.storage.request();
+          if (status.isGranted) {
+            print('Storage permission granted');
+            hasPermission = true;
+          } else {
+            print('Storage permission denied');
+          }
+        }
+
+        if (!hasPermission) {
+          // Try with direct media images permission (for Android 13+)
+          if (await Permission.mediaLibrary.status.isGranted) {
+            print('Media library permission already granted');
+            hasPermission = true;
+          } else {
+            print('Requesting media library permission...');
+            final status = await Permission.mediaLibrary.request();
+            hasPermission = status.isGranted;
+            print(
+                'Media library permission ${hasPermission ? "granted" : "denied"}');
+          }
+        }
+
+        return hasPermission;
+      } else if (Platform.isIOS) {
+        // For iOS, check and request photos permission
+        if (await Permission.photos.status.isGranted) {
+          return true;
+        } else {
+          final status = await Permission.photos.request();
+          return status.isGranted;
+        }
+      }
+
+      // Default to true for other platforms
+      return true;
+    } catch (e) {
+      print('Error checking permissions: $e');
+      // Default to true to try picking anyway
+      return true;
+    }
+  }
+
+  /// Pick an image from gallery and upload it as profile picture
+  Future<String?> pickAndUploadProfilePicture() async {
+    try {
+      // Try to check permissions, but don't block on it
+      // Image picker has its own permission handling
+      final hasPermissions = await _checkAndRequestPermissions();
+      if (!hasPermissions) {
+        print(
+            'Warning: Permission not explicitly granted for accessing photos');
+        // Continue anyway since image_picker has its own permission request
+      }
+
+      final ImagePicker picker = ImagePicker();
+
+      print('Opening image picker...');
+
+      // Pick an image from gallery
+      try {
+        final XFile? image = await picker.pickImage(
+          source: ImageSource.gallery,
+          maxWidth: 512,
+          maxHeight: 512,
+          imageQuality: 85,
+          requestFullMetadata: false, // Reduces memory usage
+        );
+
+        if (image == null) {
+          print('Image picker: No image selected (user cancelled)');
+          return null;
+        }
+
+        print('Image selected: ${image.path}');
+
+        // Check file size before uploading
+        final File file = File(image.path);
+        final fileSize = await file.length();
+        final fileSizeKB = fileSize / 1024;
+
+        print('Image size: ${fileSizeKB.toStringAsFixed(2)} KB');
+
+        if (fileSizeKB > 5000) {
+          // If image is too large (over 5MB), reduce quality further
+          print('Image too large, reducing quality');
+          final XFile? compressedImage = await picker.pickImage(
+            source: ImageSource.gallery,
+            maxWidth: 512,
+            maxHeight: 512,
+            imageQuality: 50, // Lower quality
+            requestFullMetadata: false,
+          );
+
+          if (compressedImage == null) {
+            print('Failed to compress image');
+            return null;
+          }
+
+          // Upload the compressed image
+          print('Uploading compressed image...');
+          return await uploadProfilePicture(compressedImage);
+        }
+
+        // Upload the selected image
+        print('Uploading image...');
+        return await uploadProfilePicture(image);
+      } catch (pickerError) {
+        print('Error picking image: $pickerError');
+        rethrow;
+      }
+    } catch (e) {
+      print('Error picking and uploading profile picture: $e');
+      return null;
+    }
+  }
+
+  /// Ensure the profile picture is loaded on login
+  Future<void> _loadProfilePictureOnLogin(String uid) async {
+    try {
+      // This will trigger a notification to update the More screen
+      final profilePicUrl = await getProfilePictureUrl();
+      print(
+          'Profile picture loaded on login: ${profilePicUrl != null ? 'available' : 'not available'}');
+
+      // If no profile picture URL, check for base64 image
+      if (profilePicUrl == null) {
+        final userDoc = await _firestore.collection('users').doc(uid).get();
+        if (userDoc.exists) {
+          final userData = userDoc.data();
+          final String? base64Image =
+              userData?['profilePictureBase64'] as String?;
+          if (base64Image != null) {
+            print('Base64 profile picture found on login');
+          }
+        }
+      }
+    } catch (e) {
+      print('Error loading profile picture on login: $e');
     }
   }
 }

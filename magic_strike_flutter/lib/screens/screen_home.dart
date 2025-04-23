@@ -4,6 +4,9 @@ import 'package:magic_strike_flutter/services/firestore_service.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:math';
+import 'dart:async';
+import 'package:timezone/timezone.dart' as tz;
+import 'package:timezone/data/latest.dart' as tz;
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -20,10 +23,93 @@ class _HomeScreenState extends State<HomeScreen> {
   final DateFormat _dateFormat = DateFormat('MMM d, yyyy');
   bool _isInitialLoad = true;
 
+  // Countdown timer variables
+  late DateTime _nextSunday;
+  late Timer _countdownTimer;
+  Duration _timeUntilSunday = Duration.zero;
+
   @override
   void initState() {
     super.initState();
     _fetchLatestGames();
+
+    // Initialize timezone
+    tz.initializeTimeZones();
+
+    // Calculate the next Sunday at 19:00 Belgian time
+    _calculateNextSunday();
+
+    // Set up timer to update countdown every second
+    _startCountdownTimer();
+  }
+
+  @override
+  void dispose() {
+    _countdownTimer.cancel();
+    super.dispose();
+  }
+
+  /// Calculate the next Sunday at 19:00 Belgian time
+  void _calculateNextSunday() {
+    // Get the current time in Belgian timezone (Europe/Brussels)
+    final belgianTimeZone = tz.getLocation('Europe/Brussels');
+    final now = tz.TZDateTime.now(belgianTimeZone);
+
+    // Find the next Sunday
+    int daysUntilSunday = DateTime.sunday - now.weekday;
+    if (daysUntilSunday <= 0) {
+      // If today is Sunday and it's before 19:00, use today, otherwise use next Sunday
+      if (now.weekday == DateTime.sunday && now.hour < 19) {
+        daysUntilSunday = 0;
+      } else {
+        daysUntilSunday += 7; // Go to next Sunday
+      }
+    }
+
+    // Create a DateTime for next Sunday at 19:00
+    _nextSunday = DateTime(now.year, now.month, now.day, 19, 0, 0).add(
+        Duration(days: daysUntilSunday)); // Add days separately using Duration
+
+    // Calculate the initial time until Sunday
+    _updateCountdown();
+  }
+
+  /// Start the countdown timer that updates every second
+  void _startCountdownTimer() {
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      _updateCountdown();
+    });
+  }
+
+  /// Update the countdown time remaining
+  void _updateCountdown() {
+    final now = DateTime.now();
+
+    // Calculate time difference
+    Duration difference = _nextSunday.difference(now);
+
+    // If the time has passed, calculate next Sunday
+    if (difference.isNegative) {
+      // Get the next Sunday (7 days later)
+      _nextSunday = _nextSunday.add(const Duration(days: 7));
+      difference = _nextSunday.difference(now);
+    }
+
+    if (mounted) {
+      setState(() {
+        _timeUntilSunday = difference;
+      });
+    }
+  }
+
+  /// Format the countdown duration to a readable string
+  String _formatCountdown() {
+    final days = _timeUntilSunday.inDays;
+    final hours = _timeUntilSunday.inHours.remainder(24);
+    final minutes = _timeUntilSunday.inMinutes.remainder(60);
+    final seconds = _timeUntilSunday.inSeconds.remainder(60);
+
+    return '${days}d ${hours}h ${minutes}m ${seconds}s';
   }
 
   /// Fetch the latest games from Firestore
@@ -111,74 +197,174 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       child: Scaffold(
         backgroundColor: Colors.white,
-        body: Column(
-          children: [
-            // Fixed app bar that doesn't scroll
-            Container(
-              color: Colors.white,
-              padding: const EdgeInsets.only(
-                  left: 24.0, right: 24.0, top: 50.0, bottom: 8.0),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  // Title
-                  Expanded(
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Text(
-                          'Latest games',
-                          style: const TextStyle(
-                            fontSize: 32,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.black,
-                          ),
+        body: RefreshIndicator(
+          onRefresh: _fetchLatestGames,
+          color: AppColors.ringPrimary,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            children: [
+              // Next Event Section
+              Container(
+                color: Colors.white,
+                padding: const EdgeInsets.only(
+                    left: 24.0, right: 24.0, top: 50.0, bottom: 8.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Next Event',
+                      style: const TextStyle(
+                        fontSize: 32,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: AppColors.ringBackground3rd.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: AppColors.ringBackground3rd.withOpacity(0.5),
+                          width: 1,
                         ),
-                        const SizedBox(width: 6),
-                        Transform.translate(
-                          offset: const Offset(0, 2),
-                          child: SizedBox(
-                            width: 32,
-                            height: 32,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(
+                                Icons.nightlife,
+                                color: AppColors.ringPrimary,
+                                size: 24,
+                              ),
+                              const SizedBox(width: 12),
+                              Text(
+                                'Disco Bowling Sunday',
+                                style: TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.ringPrimary,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              const Icon(
+                                Icons.nightlife,
+                                color: AppColors.ringPrimary,
+                                size: 24,
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 10, horizontal: 16),
+                            decoration: BoxDecoration(
+                              color: Colors.transparent,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
                             child: Center(
-                              child: _isLoading
-                                  ? SizedBox(
-                                      width: 20,
-                                      height: 20,
-                                      child: CircularProgressIndicator(
-                                        color: Colors.grey[600],
-                                        strokeWidth: 2.0,
-                                      ),
-                                    )
-                                  : IconButton(
-                                      icon: Icon(
-                                        Icons.refresh,
-                                        color: Colors.grey[600],
-                                        size: 24,
-                                      ),
-                                      onPressed: _fetchLatestGames,
-                                      tooltip: 'Refresh games',
-                                      padding: EdgeInsets.zero,
-                                      constraints: BoxConstraints(),
-                                    ),
+                              child: Text(
+                                _formatCountdown(),
+                                style: TextStyle(
+                                  fontSize: 28,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.black,
+                                ),
+                              ),
                             ),
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 8),
+                          Center(
+                            child: Text(
+                              'Every Sunday at 19:00',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
 
-            // Scrollable content below the fixed app bar
-            Expanded(
-              child: _isLoading
-                  ? const Center(
-                      child: CircularProgressIndicator(),
+              const SizedBox(height: 8),
+
+              // Latest Games Section Header
+              Container(
+                color: Colors.white,
+                padding: const EdgeInsets.only(
+                    left: 24.0, right: 24.0, top: 0, bottom: 8.0),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    // Title
+                    Expanded(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Text(
+                            'Latest games',
+                            style: const TextStyle(
+                              fontSize: 32,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Transform.translate(
+                            offset: const Offset(0, 2),
+                            child: SizedBox(
+                              width: 32,
+                              height: 32,
+                              child: Center(
+                                child: _isLoading
+                                    ? SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          color: Colors.grey[600],
+                                          strokeWidth: 2.0,
+                                        ),
+                                      )
+                                    : IconButton(
+                                        icon: Icon(
+                                          Icons.refresh,
+                                          color: Colors.grey[600],
+                                          size: 24,
+                                        ),
+                                        onPressed: _fetchLatestGames,
+                                        tooltip: 'Refresh games',
+                                        padding: EdgeInsets.zero,
+                                        constraints: BoxConstraints(),
+                                      ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Games content
+              _isLoading
+                  ? Container(
+                      height: 200,
+                      alignment: Alignment.center,
+                      child: const CircularProgressIndicator(),
                     )
                   : _hasError
-                      ? Center(
+                      ? Container(
+                          height: 200,
+                          alignment: Alignment.center,
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
@@ -208,7 +394,9 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         )
                       : _latestGames.isEmpty
-                          ? Center(
+                          ? Container(
+                              height: 200,
+                              alignment: Alignment.center,
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
@@ -236,122 +424,112 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ],
                               ),
                             )
-                          : RefreshIndicator(
-                              onRefresh: _fetchLatestGames,
-                              color: AppColors.ringPrimary,
-                              child: ListView.builder(
-                                padding: const EdgeInsets.fromLTRB(
-                                    24.0, 8.0, 24.0, 24.0),
-                                physics: const AlwaysScrollableScrollPhysics(),
-                                itemCount: _latestGames.length,
-                                itemBuilder: (context, index) {
-                                  final game = _latestGames[index];
+                          : ListView.builder(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              padding: const EdgeInsets.fromLTRB(
+                                  24.0, 8.0, 24.0, 24.0),
+                              itemCount: _latestGames.length,
+                              itemBuilder: (context, index) {
+                                final game = _latestGames[index];
 
-                                  // Format timestamp to readable date
-                                  String formattedDate = 'N/A';
-                                  try {
-                                    if (game['date'] is Timestamp) {
-                                      final timestamp =
-                                          game['date'] as Timestamp;
-                                      final date = timestamp.toDate();
-                                      formattedDate = _dateFormat.format(date);
-                                    } else if (game['date'] is String) {
-                                      // If it's already a string, use it directly
-                                      formattedDate = game['date'] as String;
-                                    }
-                                  } catch (e) {
-                                    print('Error formatting date: $e');
+                                // Format timestamp to readable date
+                                String formattedDate = 'N/A';
+                                try {
+                                  if (game['date'] is Timestamp) {
+                                    final timestamp = game['date'] as Timestamp;
+                                    final date = timestamp.toDate();
+                                    formattedDate = _dateFormat.format(date);
+                                  } else if (game['date'] is String) {
+                                    // If it's already a string, use it directly
+                                    formattedDate = game['date'] as String;
                                   }
+                                } catch (e) {
+                                  print('Error formatting date: $e');
+                                }
 
-                                  // Extract players data safely
-                                  List<dynamic> players = [];
-                                  try {
-                                    if (game['players'] is List) {
-                                      players =
-                                          game['players'] as List<dynamic>;
-                                    }
-                                  } catch (e) {
-                                    print('Error extracting players: $e');
+                                // Extract players data safely
+                                List<dynamic> players = [];
+                                try {
+                                  if (game['players'] is List) {
+                                    players = game['players'] as List<dynamic>;
                                   }
+                                } catch (e) {
+                                  print('Error extracting players: $e');
+                                }
 
-                                  // If no players found, create a placeholder
-                                  if (players.isEmpty) {
-                                    players = [
-                                      {
-                                        'name': 'No player data',
-                                        'totalScore': 0
-                                      }
-                                    ];
-                                  }
+                                // If no players found, create a placeholder
+                                if (players.isEmpty) {
+                                  players = [
+                                    {'name': 'No player data', 'totalScore': 0}
+                                  ];
+                                }
 
-                                  return Padding(
-                                    padding: const EdgeInsets.only(
-                                        bottom: 16.0), // Gap between cards
-                                    child: Container(
-                                      width: MediaQuery.of(context).size.width *
-                                          0.85,
-                                      // Set height based on player count plus space for header
-                                      // Use a minimum height of 125 and dynamic height based on player count
-                                      height: max(125.0,
-                                          90.0 + (players.length * 35.0)),
-                                      decoration: BoxDecoration(
-                                        color: Colors.white,
-                                        borderRadius:
-                                            BorderRadius.circular(12.0),
-                                        border: Border.all(
-                                          color: AppColors.ringPrimary,
-                                          width: 1.0,
-                                        ),
-                                      ),
-                                      child: Padding(
-                                        padding: const EdgeInsets.all(
-                                            12.0), // Reduce padding
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            // Game date at the top
-                                            Padding(
-                                              padding: const EdgeInsets.only(
-                                                  bottom:
-                                                      8.0), // Reduced bottom padding
-                                              child: Text(
-                                                formattedDate,
-                                                style: const TextStyle(
-                                                  fontSize: 18,
-                                                  fontWeight: FontWeight.normal,
-                                                  color: Colors.black,
-                                                ),
-                                              ),
-                                            ),
-
-                                            // Frames grid with player names
-                                            Expanded(
-                                              child: Container(
-                                                decoration: BoxDecoration(
-                                                  color: Colors.white,
-                                                  borderRadius:
-                                                      BorderRadius.circular(
-                                                          8.0),
-                                                ),
-                                                child: Padding(
-                                                  padding: const EdgeInsets.all(
-                                                      2.0), // Reduced padding even more
-                                                  child:
-                                                      _buildFramesGrid(players),
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
+                                return Padding(
+                                  padding: const EdgeInsets.only(
+                                      bottom: 16.0), // Gap between cards
+                                  child: Container(
+                                    width: MediaQuery.of(context).size.width *
+                                        0.85,
+                                    // Set height based on player count plus space for header
+                                    // Use a minimum height of 125 and dynamic height based on player count
+                                    height: max(
+                                        125.0, 90.0 + (players.length * 35.0)),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(12.0),
+                                      border: Border.all(
+                                        color: AppColors.ringPrimary,
+                                        width: 1.0,
                                       ),
                                     ),
-                                  );
-                                },
-                              ),
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(
+                                          12.0), // Reduce padding
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          // Game date at the top
+                                          Padding(
+                                            padding: const EdgeInsets.only(
+                                                bottom:
+                                                    8.0), // Reduced bottom padding
+                                            child: Text(
+                                              formattedDate,
+                                              style: const TextStyle(
+                                                fontSize: 18,
+                                                fontWeight: FontWeight.normal,
+                                                color: Colors.black,
+                                              ),
+                                            ),
+                                          ),
+
+                                          // Frames grid with player names
+                                          Expanded(
+                                            child: Container(
+                                              decoration: BoxDecoration(
+                                                color: Colors.white,
+                                                borderRadius:
+                                                    BorderRadius.circular(8.0),
+                                              ),
+                                              child: Padding(
+                                                padding: const EdgeInsets.all(
+                                                    2.0), // Reduced padding even more
+                                                child:
+                                                    _buildFramesGrid(players),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
                             ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

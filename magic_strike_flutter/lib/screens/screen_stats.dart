@@ -136,6 +136,7 @@ class _StatsScreenState extends State<StatsScreen>
     final firstBallStats = _currentFirstBallStats;
 
     return Scaffold(
+      extendBodyBehindAppBar: false,
       backgroundColor: Colors.white,
       body: _isLoading
           ? const Center(
@@ -176,7 +177,8 @@ class _StatsScreenState extends State<StatsScreen>
                   color: AppColors.ringPrimary,
                   child: ListView(
                     padding: const EdgeInsets.fromLTRB(24.0, 16.0, 24.0, 24.0),
-                    physics: const AlwaysScrollableScrollPhysics(),
+                    physics: const AlwaysScrollableScrollPhysics(
+                        parent: ClampingScrollPhysics()),
                     children: [
                       // Overview Section
                       Column(

@@ -353,6 +353,8 @@ class _JoinGameScreenState extends State<JoinGameScreen> {
                             borderRadius: BorderRadius.circular(12),
                           ),
                           elevation: 0, // No drop shadow
+                          shadowColor: Colors
+                              .transparent, // Prevents shadow when pressed
                         ),
                         child: const Text(
                           'Join Game',

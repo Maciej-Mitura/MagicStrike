@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/user_service.dart';
 import '../services/firestore_service.dart';
 import 'package:collection/collection.dart';
+import 'package:magic_strike_flutter/services/vibration_service.dart';
 
 // Temporary model classes until we have the real implementation
 class BowlingGameModel {
@@ -280,6 +281,8 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
   late BowlingGameModel _game;
   late FirestoreService _firestoreService;
   late UserService _userService;
+  // Add vibration service
+  final VibrationService _vibrationService = VibrationService();
 
   // For real-time updates
   StreamSubscription<QuerySnapshot>? _gameDocSubscription;
@@ -304,6 +307,12 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
   int? get _selectedEditFrame => _selectedFrameIndex;
   BowlingPlayer? get _selectedEditPlayer =>
       _game.players.firstWhereOrNull((p) => p.id == _selectedPlayerId);
+
+  // Add a map to track the latest seen frames for each player
+  Map<String, List<BowlingFrame>> _lastSeenFrames = {};
+
+  // Track frames we've already vibrated for to avoid duplicate vibrations
+  Set<String> _strikeVibratedFrames = {};
 
   @override
   void initState() {
@@ -436,8 +445,20 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
   }
 
   void _updatePlayerFramesFromFirestore(List<dynamic> playersData) {
+    // Store current frames before updating
+    if (_lastSeenFrames.isEmpty) {
+      // Initialize last seen frames for each player
+      for (final player in _game.players) {
+        _lastSeenFrames[player.name] = List.from(player.frames);
+      }
+    }
+
     // For each player in our game model
     for (final player in _game.players) {
+      // Keep track of frames before update for comparison
+      final List<BowlingFrame> previousFrames =
+          _lastSeenFrames[player.name] ?? List.from(player.frames);
+
       // Find matching player data in Firestore
       final playerData = playersData.firstWhere(
         (p) => p['firstName'] == player.name,
@@ -483,8 +504,16 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
       }
     }
 
+    // Update last seen frames after processing all players
+    for (final player in _game.players) {
+      _lastSeenFrames[player.name] = List.from(player.frames);
+    }
+
     // Always use the game model's score calculation to ensure consistency
     _game._calculateScores();
+
+    // Check for new strikes after all frames are updated
+    _checkForNewStrikes();
 
     // Debug print for admin view
     if (widget.isAdmin) {
@@ -508,6 +537,45 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
 
       print(frameDebug.toString());
       print(scoreDebug.toString());
+    }
+  }
+
+  // Helper method to check for new strikes in player frames
+  void _checkForNewStrikes() {
+    try {
+      // Skip if not a player or spectator
+      if (!_isCurrentPlayerInGame()) {
+        return;
+      }
+
+      // Check each player and their frames
+      for (final player in _game.players) {
+        // Check each frame for strikes
+        for (int i = 0; i < player.frames.length && i < 10; i++) {
+          final frame = player.frames[i];
+          final String frameKey = "${player.name}_${i}_${frame.firstThrow}";
+
+          // Check if this is a strike and we haven't vibrated for it yet
+          if (frame.isStrike &&
+              frame.firstThrow == 10 &&
+              !_strikeVibratedFrames.contains(frameKey)) {
+            // New strike detected!
+            print(
+                'New strike detected for player ${player.name} in frame ${i + 1}');
+
+            // Add to the set of vibrated frames
+            _strikeVibratedFrames.add(frameKey);
+
+            // Trigger vibration
+            _vibrationService.vibrateForStrike();
+
+            // Only vibrate once per update
+            return;
+          }
+        }
+      }
+    } catch (e) {
+      print('Error checking for new strikes: $e');
     }
   }
 
@@ -549,6 +617,7 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
             ],
           ),
           actions: [
+            // Test button removed
             IconButton(
               icon: const Icon(Icons.info_outline),
               onPressed: () => _showGameInfo(),
@@ -2371,10 +2440,63 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
         _pinStates = List.generate(10, (_) => true);
         _pinsDown = 10;
       });
+
+      // Add vibration feedback for strikes on first throw
+      // Only if this is a real player (not a spectator)
+      if (_game.currentThrow == 1) {
+        _triggerStrikeVibration();
+      }
     }
 
     // Submit the throw
     _submitThrow();
+  }
+
+  // Trigger vibration for strike
+  Future<void> _triggerStrikeVibration() async {
+    try {
+      // Check if the current user is a player in the game
+      final bool isPlayer = _isCurrentPlayerInGame();
+
+      // Only vibrate for actual players, not spectators or admins who aren't playing
+      if (isPlayer) {
+        await _vibrationService.vibrateForStrike();
+      }
+    } catch (e) {
+      print('Error triggering strike vibration: $e');
+    }
+  }
+
+  // Helper method to determine if current user is an active player in the game
+  bool _isCurrentPlayerInGame() {
+    // In this app's context, a user is a player if they're
+    // listed in the players array with the current firstName
+    try {
+      // If user is not admin, they're a spectator
+      if (!widget.isAdmin) {
+        return false;
+      }
+
+      // Get current user's firstName
+      final currentUserName = _userService.currentUserFirstName;
+
+      // Check if this user is in the players list
+      if (currentUserName == null) {
+        return false;
+      }
+
+      // Look for the user in the players list
+      for (final player in _game.players) {
+        if (player.name == currentUserName) {
+          return true;
+        }
+      }
+
+      return false;
+    } catch (e) {
+      print('Error checking if user is player: $e');
+      return false;
+    }
   }
 
   Future<bool> _showExitConfirmation() async {
@@ -2480,5 +2602,19 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
           ),
         ) ??
         false;
+  }
+
+  // Add a test method to verify our vibration service works properly
+  Future<void> _testVibration() async {
+    final canVibrate = await _vibrationService.hasVibrator();
+    print('Device can vibrate: $canVibrate');
+    if (canVibrate) {
+      await _vibrationService.vibrateForStrike();
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Testing vibration...')));
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Device cannot vibrate!')));
+    }
   }
 }

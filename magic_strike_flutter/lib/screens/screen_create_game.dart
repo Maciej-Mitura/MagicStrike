@@ -514,6 +514,8 @@ class _CreateGameScreenState extends State<CreateGameScreen> {
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
+                          elevation: 0,
+                          shadowColor: Colors.transparent,
                         ),
                         child: Text(
                           _allPlayersJoined

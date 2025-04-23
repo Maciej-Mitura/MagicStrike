@@ -82,6 +82,17 @@ class _AuthChoiceScreenState extends State<AuthChoiceScreen> {
                         borderRadius: BorderRadius.circular(8.0),
                       ),
                       elevation: 0,
+                      shadowColor: Colors.transparent, // Remove shadow
+                      surfaceTintColor:
+                          Colors.transparent, // Remove surface tint
+                      tapTargetSize: MaterialTapTargetSize
+                          .shrinkWrap, // Tighter touch target
+                      animationDuration:
+                          const Duration(milliseconds: 50), // Faster animation
+                    ).copyWith(
+                      // Remove hover, focus and press effects
+                      overlayColor:
+                          MaterialStateProperty.all(Colors.transparent),
                     ),
                     child: const Text(
                       'Log in',

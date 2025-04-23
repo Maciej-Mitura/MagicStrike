@@ -18,6 +18,14 @@ dependencies:
   intl: ^0.18.1
   url_launcher: ^6.3.1
   collection: ^1.18.0
+  package_info_plus: ^5.0.1
+  image_picker: ^1.0.7
+  firebase_storage: ^11.6.0
+  permission_handler: ^11.3.0
+  # vibration: ^1.7.4  # Will be replaced by haptic_feedback for better stability
+  haptic_feedback: ^0.4.2
+  device_info_plus: ^9.1.1
+  timezone: ^0.9.4
 
 dev_dependencies:
   flutter_test:

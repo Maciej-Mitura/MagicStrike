@@ -57,6 +57,13 @@ class HomePageState extends State<HomePage> {
   void _onTabTapped(int index) {
     setState(() {
       _selectedIndex = index;
+
+      // If More tab is selected, ensure profile picture is loaded
+      if (index == 4) {
+        print('More tab selected, refreshing profile data');
+        // This will trigger didChangeDependencies in MoreSettingsScreen
+        _screens[4] = MoreSettingsScreen(key: UniqueKey());
+      }
     });
   }
 
@@ -70,6 +77,9 @@ class HomePageState extends State<HomePage> {
         _selectedIndex == 3) {
       return AppBar(
         backgroundColor: Colors.white,
+        scrolledUnderElevation: 0, // Prevents elevation change when scrolling
+        shadowColor:
+            Colors.transparent, // Prevents shadow from appearing when scrolling
         title: Padding(
           padding: const EdgeInsets.only(top: 24.0),
           child: Image.asset(
