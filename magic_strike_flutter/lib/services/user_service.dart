@@ -72,6 +72,16 @@ class UserService {
           storedFirstName = firstName;
         }
 
+        // Ensure the user has a badges field (add it if missing)
+        if (!userData!.containsKey('badges')) {
+          await _firestore.collection('users').doc(uid).set(
+            {
+              'badges': [],
+            },
+            SetOptions(merge: true),
+          );
+        }
+
         // Store values in memory
         _currentUserDeRingID = deRingID;
         _currentUserFirstName = storedFirstName ?? '';
@@ -101,6 +111,7 @@ class UserService {
           'lastName': '', // User's last name
           'side': '', // User's bowling side (e.g., right/left)
           'style': '', // User's bowling style
+          'badges': [], // Empty array for user badges
         });
 
         // Store values in memory
@@ -230,6 +241,53 @@ class UserService {
   /// Update the cached firstName value
   void updateCachedFirstName(String firstName) {
     _currentUserFirstName = firstName;
+  }
+
+  /// Check if email exists in Firestore users collection
+  Future<bool> checkEmailExistsInFirestore(String email) async {
+    try {
+      final QuerySnapshot result = await _firestore
+          .collection('users')
+          .where('email', isEqualTo: email)
+          .limit(1)
+          .get();
+
+      return result.docs.isNotEmpty;
+    } catch (e) {
+      print('Error checking email in Firestore: $e');
+      return false; // Default to false in case of error
+    }
+  }
+
+  /// Check if an email exists in Firebase Auth
+  Future<bool> checkEmailExistsInAuth(String email) async {
+    try {
+      final List<String> methods =
+          await _auth.fetchSignInMethodsForEmail(email);
+      return methods.isNotEmpty;
+    } catch (e) {
+      print('Error checking email in Auth: $e');
+      return false;
+    }
+  }
+
+  /// ADMIN ONLY: Detect and handle orphaned accounts
+  /// This should only be used by administrators to clean up the database
+  /// Returns a list of emails that exist in Auth but not in Firestore
+  Future<List<String>> findOrphanedAuthAccounts(List<String> emails) async {
+    List<String> orphanedEmails = [];
+
+    for (String email in emails) {
+      final bool existsInAuth = await checkEmailExistsInAuth(email);
+      final bool existsInFirestore = await checkEmailExistsInFirestore(email);
+
+      if (existsInAuth && !existsInFirestore) {
+        orphanedEmails.add(email);
+        print('Found orphaned Auth account: $email');
+      }
+    }
+
+    return orphanedEmails;
   }
 
   /// Update all games with the new firstName for the current user

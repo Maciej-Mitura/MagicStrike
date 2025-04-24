@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import '../screens/screen_auth_choice.dart';
 import '../main.dart';
+import '../services/badge_service.dart';
 
 class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
@@ -15,6 +16,7 @@ class _AuthGateState extends State<AuthGate> {
   bool _isLoading = true;
   bool _isLoggedIn = false;
   String? _errorMessage;
+  final BadgeService _badgeService = BadgeService();
 
   @override
   void initState() {
@@ -33,6 +35,12 @@ class _AuthGateState extends State<AuthGate> {
 
       // Small delay to ensure Firebase Auth is initialized
       await Future.delayed(const Duration(milliseconds: 500));
+
+      // If user is logged in, migrate badge format
+      if (currentUser != null) {
+        print('🔄 User logged in, migrating badge format');
+        await _badgeService.migrateBadgesFormat();
+      }
 
       // Update state based on auth status
       if (mounted) {

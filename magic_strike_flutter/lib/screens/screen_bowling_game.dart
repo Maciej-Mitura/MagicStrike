@@ -6,6 +6,7 @@ import '../services/user_service.dart';
 import '../services/firestore_service.dart';
 import 'package:collection/collection.dart';
 import 'package:magic_strike_flutter/services/vibration_service.dart';
+import '../services/game_service.dart';
 
 // Temporary model classes until we have the real implementation
 class BowlingGameModel {
@@ -2195,6 +2196,7 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
       // Prepare game data for Firestore
       final FirestoreService firestoreService = FirestoreService();
       final UserService userService = UserService();
+      final GameService gameService = GameService();
 
       // Get user data
       final userData = await userService.getCurrentUserData();
@@ -2314,6 +2316,96 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
 
       if (gameId == null) {
         throw Exception('Failed to save game');
+      }
+
+      // Process achievements for each player when game is completed
+      for (final playerData in playersData) {
+        final String playerUserId = playerData['userId'] as String;
+
+        // Skip if userId is empty or null
+        if (playerUserId.isEmpty) continue;
+
+        print(
+            '⚡ Processing achievements for player ${playerData['firstName']} (ID: $playerUserId)');
+
+        // Calculate game stats and check for achievements
+        final Map<String, dynamic> gameStats = {
+          'score': playerData['totalScore'] as int? ?? 0,
+          'throwsPerFrame': playerData['throwsPerFrame'],
+          'playerCount': playersData.length,
+          'gameTime': now,
+          'location': location,
+          'isDisco': location.toLowerCase().contains('disco'),
+        };
+
+        // Count strikes, spares, and calculate other stats
+        int totalStrikes = 0;
+        int consecutiveStrikes = 0;
+        int maxConsecutiveStrikes = 0;
+        int spares = 0;
+
+        final throwsPerFrame =
+            playerData['throwsPerFrame'] as Map<String, dynamic>;
+        for (int i = 1; i <= 10; i++) {
+          final String frameKey = i.toString();
+          if (throwsPerFrame.containsKey(frameKey)) {
+            final List<dynamic> throws =
+                throwsPerFrame[frameKey] as List<dynamic>;
+
+            // Check for strike
+            if (throws.isNotEmpty && throws[0] == 10) {
+              totalStrikes++;
+              consecutiveStrikes++;
+              if (consecutiveStrikes > maxConsecutiveStrikes) {
+                maxConsecutiveStrikes = consecutiveStrikes;
+              }
+            } else {
+              consecutiveStrikes = 0;
+
+              // Check for spare
+              if (throws.length >= 2 &&
+                  throws[0] + throws[1] == 10 &&
+                  throws[0] != 10) {
+                spares++;
+              }
+            }
+          }
+        }
+
+        // Add calculated stats to game data
+        gameStats['totalStrikes'] = totalStrikes;
+        gameStats['consecutiveStrikes'] = maxConsecutiveStrikes;
+        gameStats['spares'] = spares;
+
+        // Process game completion to check for achievements
+        final List<String> awardedBadges =
+            await gameService.processGameCompletion(
+          gameData: gameStats,
+          userId: playerUserId,
+        );
+
+        if (awardedBadges.isNotEmpty) {
+          print(
+              '🏆 Awarded badges for ${playerData['firstName']}: ${awardedBadges.join(', ')}');
+
+          // Show notification only for the current user
+          if (playerUserId == deRingID && mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content:
+                    Text('You earned ${awardedBadges.length} new badge(s)!'),
+                backgroundColor: Colors.green,
+                action: SnackBarAction(
+                  label: 'View',
+                  onPressed: () {
+                    // Navigate to badges screen
+                    Navigator.pushNamed(context, '/badges');
+                  },
+                ),
+              ),
+            );
+          }
+        }
       }
 
       // Delete the original live game document once it's saved

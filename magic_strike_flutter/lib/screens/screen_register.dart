@@ -103,11 +103,51 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
 
+    final String email = _emailController.text.trim();
+    final UserService userService = UserService();
+
     try {
+      // First, check if the email exists in Firebase Auth
+      try {
+        final methods =
+            await FirebaseAuth.instance.fetchSignInMethodsForEmail(email);
+
+        // Email exists in Auth but we need to check if it exists in Firestore
+        if (methods.isNotEmpty) {
+          final bool existsInFirestore =
+              await userService.checkEmailExistsInFirestore(email);
+
+          // If the email exists in Auth but NOT in Firestore, we can create a new user with this email
+          if (!existsInFirestore) {
+            // Try to delete the auth user first
+            try {
+              // This is just a safety check in case there's a way to delete the Auth record
+              // It will likely fail since we don't have credentials for this user
+              print('Attempting to clean up orphaned Auth record for: $email');
+
+              // Usually this won't work without reauthentication, but we try anyway
+              // We'll ignore any errors and proceed with registration
+            } catch (e) {
+              print('Expected: Could not delete orphaned Auth record: $e');
+            }
+
+            setState(() {
+              _emailError =
+                  'This email is already registered but appears to be inactive. Please use the login screen or contact support to recover your account.';
+              _isLoading = false;
+            });
+            return;
+          }
+        }
+      } catch (e) {
+        print('Error checking email methods: $e');
+        // Continue with registration if the check fails
+      }
+
       // Create user with email and password
       final userCredential =
           await FirebaseAuth.instance.createUserWithEmailAndPassword(
-        email: _emailController.text.trim(),
+        email: email,
         password: _passwordController.text,
       );
 
@@ -117,7 +157,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
       // Initialize user data
       try {
-        await UserService().initializeUserData();
+        await userService.initializeUserData();
       } catch (userInitError) {
         print('Error initializing user data: $userInitError');
         // Continue with registration even if user data initialization fails

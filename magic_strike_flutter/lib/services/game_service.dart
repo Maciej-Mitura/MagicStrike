@@ -1,6 +1,9 @@
 import 'dart:async';
 
 import 'package:magic_strike_flutter/models/game_model.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'badge_service.dart';
 
 /// Service class for live game management
 /// This will be replaced with actual API calls in the future
@@ -9,6 +12,10 @@ class GameService {
   static final GameService _instance = GameService._internal();
   factory GameService() => _instance;
   GameService._internal();
+
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final BadgeService _badgeService = BadgeService();
 
   // In-memory cache of active games
   final Map<String, LiveGame> _activeGames = {};
@@ -391,5 +398,314 @@ class GameService {
     _gameControllers.clear();
     _activeGames.clear();
     _gameViewers.clear();
+  }
+
+  /// Process game completion and check for achievements
+  ///
+  /// This function should be called when a game is completed
+  /// It calculates statistics and checks for badges
+  Future<List<String>> processGameCompletion({
+    required Map<String, dynamic> gameData,
+    required String userId,
+  }) async {
+    try {
+      // Enrich game data with calculated stats
+      final Map<String, dynamic> enrichedGameData =
+          await _calculateGameStats(gameData, userId);
+
+      // Check for achievements and award badges
+      final List<String> awardedBadges =
+          await _badgeService.checkForAchievements(
+        gameData: enrichedGameData,
+        userId: userId,
+      );
+
+      return awardedBadges;
+    } catch (e) {
+      print('Error processing game completion: $e');
+      return [];
+    }
+  }
+
+  /// Calculate advanced game statistics from raw game data
+  /// This enriches the game data with derived statistics needed for achievement checks
+  Future<Map<String, dynamic>> _calculateGameStats(
+    Map<String, dynamic> gameData,
+    String userId,
+  ) async {
+    try {
+      // Get user's existing games to check if this is their first game
+      final bool isFirstGame = await _isUsersFirstGame(userId);
+
+      // Get the throws data from the game
+      final List<dynamic> throwsData = gameData['throwsPerFrame'] ?? [];
+
+      // Initialize statistics
+      int consecutiveStrikes = 0;
+      int maxConsecutiveStrikes = 0;
+      int totalStrikes = 0;
+      int spares = 0;
+      int gutterBalls = 0;
+
+      // Calculate statistics from throws data
+      // This would normally parse the actual throws data
+      // For now, we'll use mock calculations
+
+      // Simulate parsing throws data (in a real implementation, this would analyze the actual game data)
+      for (int i = 1; i <= 10; i++) {
+        // Mock frame data
+        final List<dynamic> frameThrows =
+            throwsData.isNotEmpty && throwsData.length >= i
+                ? throwsData[i - 1] as List<dynamic>
+                : [];
+
+        // Count strikes, spares, and gutters based on the mock data
+        if (frameThrows.isNotEmpty) {
+          final int firstThrow =
+              frameThrows[0] is int ? frameThrows[0] as int : 0;
+
+          // Check for strike
+          if (firstThrow == 10) {
+            totalStrikes++;
+            consecutiveStrikes++;
+            if (consecutiveStrikes > maxConsecutiveStrikes) {
+              maxConsecutiveStrikes = consecutiveStrikes;
+            }
+          } else {
+            consecutiveStrikes = 0;
+
+            // Check for gutter ball
+            if (firstThrow == 0) {
+              gutterBalls++;
+            }
+
+            // Check for spare if there's a second throw
+            if (frameThrows.length > 1) {
+              final int secondThrow =
+                  frameThrows[1] is int ? frameThrows[1] as int : 0;
+              if (firstThrow + secondThrow == 10) {
+                spares++;
+              }
+              if (secondThrow == 0) {
+                gutterBalls++;
+              }
+            }
+          }
+        }
+      }
+
+      // Determine if game was a comeback win
+      bool wonByComeback = false;
+      if (gameData['playerCount'] != null && gameData['playerCount'] > 1) {
+        // Mock logic to determine if user was behind by 30+ points and won
+        wonByComeback = gameData['wasComeback'] ?? false;
+      }
+
+      // Check if this was a disco bowling game
+      bool isDisco = gameData['isDisco'] ?? false;
+
+      // Return enriched game data with calculated statistics
+      return {
+        ...gameData,
+        'isFirstGame': isFirstGame,
+        'consecutiveStrikes': maxConsecutiveStrikes,
+        'totalStrikes': totalStrikes,
+        'spares': spares,
+        'gutterBalls': gutterBalls,
+        'wonByComeback': wonByComeback,
+        'isDisco': isDisco,
+      };
+    } catch (e) {
+      print('Error calculating game stats: $e');
+      // Return original game data if there was an error
+      return {...gameData, 'isFirstGame': await _isUsersFirstGame(userId)};
+    }
+  }
+
+  /// Check if this is the user's first game
+  Future<bool> _isUsersFirstGame(String userId) async {
+    try {
+      // Query Firestore for games created by this user
+      final QuerySnapshot gamesSnapshot = await _firestore
+          .collection('games')
+          .where('createdBy', isEqualTo: userId)
+          .limit(1)
+          .get();
+
+      // This is the user's first game if no previous games were found
+      return gamesSnapshot.docs.isEmpty;
+    } catch (e) {
+      print('Error checking if this is user\'s first game: $e');
+      return false;
+    }
+  }
+
+  /// Method to test achievement awarding with simulated game data
+  Future<List<String>> testGameCompletionWithMockData({String? userId}) async {
+    final String uid = userId ?? _auth.currentUser?.uid ?? '';
+    if (uid.isEmpty) {
+      print('No user ID available for testing');
+      return [];
+    }
+
+    try {
+      // Ensure badge data is in the right format before testing
+      print('🔄 DEBUG: Migrating badge format before testing');
+      await _badgeService.migrateBadgesFormat(userId: uid);
+
+      // Create mock game data
+      final Map<String, dynamic> mockGameData = {
+        'score': 220,
+        'date': DateTime.now(),
+        'location': 'Test Bowling Alley',
+        'playerCount': 4,
+        'isDisco': false,
+        'wasComeback': true,
+        'throwsPerFrame': [
+          [10], // Frame 1: Strike
+          [10], // Frame 2: Strike
+          [10], // Frame 3: Strike
+          [9, 1], // Frame 4: Spare
+          [8, 2], // Frame 5: Spare
+          [7, 3], // Frame 6: Spare
+          [10], // Frame 7: Strike
+          [9, 1], // Frame 8: Spare
+          [10], // Frame 9: Strike
+          [10, 10, 10], // Frame 10: Three strikes
+        ],
+      };
+
+      // Process the mock game completion
+      return await processGameCompletion(
+        gameData: mockGameData,
+        userId: uid,
+      );
+    } catch (e) {
+      print('❌ DEBUG: Error during test badge check: $e');
+      return [];
+    }
+  }
+
+  // Check for achievements when a game is completed
+  Future<void> checkForAchievements(LiveGame game, String userId) async {
+    print(
+        '🎮 DEBUG: Checking achievements for game ${game.id} by user $userId');
+    final BadgeService badgeService = BadgeService();
+
+    try {
+      // Get the user's current stats
+      final userStats = await getUserStats(userId);
+      print('📊 DEBUG: User stats for achievement check: $userStats');
+
+      // Achievement: First Game Completed
+      if (userStats['totalGames'] == 1) {
+        print('🔍 DEBUG: First game detected, awarding first_game badge');
+        await badgeService.awardBadge('first_game', userId: userId);
+      }
+
+      // Achievement: Perfect Game (Score 300)
+      if (game.players.isNotEmpty && game.players.first.totalScore == 300) {
+        print(
+            '🔍 DEBUG: Perfect game detected (300), awarding perfect_game badge');
+        await badgeService.awardBadge('perfect_game', userId: userId);
+      }
+
+      // Achievement: Century Club (Score 100+)
+      if (game.players.isNotEmpty && game.players.first.totalScore >= 100) {
+        print(
+            '🔍 DEBUG: Score 100+ detected (${game.players.first.totalScore}), awarding century_club badge');
+        await badgeService.awardBadge('century_club', userId: userId);
+      }
+
+      // Achievement: Triple Digit Master (Score 100+ in 5 games)
+      if (userStats['gamesAbove100'] >= 5) {
+        print(
+            '🔍 DEBUG: 5+ games with score 100+ detected, awarding triple_digit_master badge');
+        await badgeService.awardBadge('triple_digit_master', userId: userId);
+      }
+
+      // Achievement: Bowling Enthusiast (10+ games)
+      if (userStats['totalGames'] >= 10) {
+        print(
+            '🔍 DEBUG: 10+ total games detected, awarding bowling_enthusiast badge');
+        await badgeService.awardBadge('bowling_enthusiast', userId: userId);
+      }
+
+      // Achievement: Frame Perfect (All strikes in a single frame across all players)
+      bool frameHasAllStrikes = false;
+      for (int frameIndex = 0; frameIndex < 10; frameIndex++) {
+        bool allStrikesInFrame = true;
+        for (final player in game.players) {
+          if (player.frames.length <= frameIndex ||
+              !player.frames[frameIndex].isStrike) {
+            allStrikesInFrame = false;
+            break;
+          }
+        }
+        if (allStrikesInFrame && game.players.length > 1) {
+          frameHasAllStrikes = true;
+          break;
+        }
+      }
+
+      if (frameHasAllStrikes) {
+        print(
+            '🔍 DEBUG: Frame with all strikes detected, awarding frame_perfect badge');
+        await badgeService.awardBadge('frame_perfect', userId: userId);
+      }
+
+      print('✅ DEBUG: Achievement check completed for game ${game.id}');
+    } catch (e) {
+      print('❌ DEBUG: Error checking achievements: $e');
+    }
+  }
+
+  /// Get user statistics for achievement checks
+  Future<Map<String, dynamic>> getUserStats(String userId) async {
+    print('📊 DEBUG: Fetching user stats for user $userId');
+    try {
+      // Default stats in case we can't find user data
+      Map<String, dynamic> userStats = {
+        'totalGames': 0,
+        'gamesAbove100': 0,
+        'highScore': 0,
+        'averageScore': 0,
+        'strikePercentage': 0,
+        'sparePercentage': 0,
+      };
+
+      // Get user document from Firestore
+      final userDoc = await _firestore.collection('users').doc(userId).get();
+
+      if (!userDoc.exists) {
+        print('❌ DEBUG: User document not found for $userId');
+        return userStats;
+      }
+
+      // Get stats from user document
+      final userData = userDoc.data() as Map<String, dynamic>;
+
+      // Get stats from userData or use defaults
+      userStats['totalGames'] = userData['totalGames'] ?? 0;
+      userStats['gamesAbove100'] = userData['gamesAbove100'] ?? 0;
+      userStats['highScore'] = userData['highScore'] ?? 0;
+      userStats['averageScore'] = userData['averageScore'] ?? 0;
+      userStats['strikePercentage'] = userData['strikePercentage'] ?? 0;
+      userStats['sparePercentage'] = userData['sparePercentage'] ?? 0;
+
+      print('✅ DEBUG: Successfully retrieved user stats: $userStats');
+      return userStats;
+    } catch (e) {
+      print('❌ DEBUG: Error fetching user stats: $e');
+      // Return default stats in case of error
+      return {
+        'totalGames': 0,
+        'gamesAbove100': 0,
+        'highScore': 0,
+        'averageScore': 0,
+        'strikePercentage': 0,
+        'sparePercentage': 0,
+      };
+    }
   }
 }

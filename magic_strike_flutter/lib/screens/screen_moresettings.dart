@@ -12,6 +12,8 @@ import 'package:firebase_storage/firebase_storage.dart';
 
 import 'screen_auth_choice.dart';
 import '../services/user_service.dart';
+import '../widgets/achievements_row.dart';
+import '../screens/screen_badges.dart';
 
 class MoreSettingsScreen extends StatefulWidget {
   const MoreSettingsScreen({super.key});
@@ -1178,15 +1180,11 @@ class _MoreSettingsScreenState extends State<MoreSettingsScreen>
                         // Delete user from Firebase Auth
                         await currentUser.delete();
 
-                        // The user is now deleted from authentication but we keep their games in Firestore
-                        // Optionally, we could mark the user's document as 'deleted' in Firestore
+                        // Completely delete the user document from Firestore instead of just marking it
                         await FirebaseFirestore.instance
                             .collection('users')
                             .doc(userId)
-                            .update({
-                          'accountDeleted': true,
-                          'deletedAt': FieldValue.serverTimestamp()
-                        });
+                            .delete();
 
                         // Close the dialog
                         Navigator.of(dialogContext).pop();
@@ -1583,12 +1581,24 @@ class _MoreSettingsScreenState extends State<MoreSettingsScreen>
                     ),
                   ),
                 ),
-                const SizedBox(height: 16), // Reduced from 24
+                const SizedBox(height: 16),
               ],
             ),
           ),
 
-          const SizedBox(height: 16), // Reduced from 24
+          // Achievements Section
+          AchievementsRow(
+            cardHeight: 140,
+            cardWidth: 110,
+            onViewAllPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const BadgeScreen()),
+              );
+            },
+          ),
+
+          const SizedBox(height: 24),
 
           // Personal Info Section
           _buildSectionTitle('Personal Information'),
