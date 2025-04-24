@@ -1,6 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart'; // For PaintingBinding
 import 'package:magic_strike_flutter/constants/app_colors.dart';
 import 'package:magic_strike_flutter/services/stats_service.dart';
+import 'package:magic_strike_flutter/services/leaderboard_service.dart';
+import 'package:magic_strike_flutter/services/user_service.dart';
+import 'package:magic_strike_flutter/widgets/leaderboard_item.dart';
+import 'package:magic_strike_flutter/widgets/strikes_leaderboard_item.dart';
+import 'package:magic_strike_flutter/widgets/average_leaderboard_item.dart';
+import 'package:magic_strike_flutter/widgets/dering_leaderboard_item.dart';
+import 'package:magic_strike_flutter/widgets/strike_streak_leaderboard_item.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:async';
 
 class StatsScreen extends StatefulWidget {
   const StatsScreen({super.key});
@@ -17,6 +27,8 @@ class _StatsScreenState extends State<StatsScreen>
 
   // Service for retrieving stats
   final StatsService _statsService = StatsService();
+  final LeaderboardService _leaderboardService = LeaderboardService();
+  final UserService _userService = UserService();
 
   // State variables for stats
   bool _isLoading = true;
@@ -25,7 +37,26 @@ class _StatsScreenState extends State<StatsScreen>
   int _bestScore = 0;
   int _gamesPlayed = 0;
   int _cleanPercentage = 0;
+  int _longestStrikeStreak = 0;
   List<int> _recentScores = [];
+  String? _currentUserId;
+
+  // Leaderboard data
+  List<Map<String, dynamic>> _scoreLeaderboardData = [];
+  List<Map<String, dynamic>> _strikesLeaderboardData = [];
+  List<Map<String, dynamic>> _averageLeaderboardData = [];
+  List<Map<String, dynamic>> _deringLeaderboardData = [];
+  List<Map<String, dynamic>> _strikeStreakLeaderboardData = [];
+  bool _isLoadingScoreLeaderboard = true;
+  bool _isLoadingStrikesLeaderboard = true;
+  bool _isLoadingAverageLeaderboard = true;
+  bool _isLoadingDeringLeaderboard = true;
+  bool _isLoadingStrikeStreakLeaderboard = true;
+  StreamSubscription? _scoreLeaderboardSubscription;
+  StreamSubscription? _strikesLeaderboardSubscription;
+  StreamSubscription? _averageLeaderboardSubscription;
+  StreamSubscription? _deringLeaderboardSubscription;
+  StreamSubscription? _strikeStreakLeaderboardSubscription;
 
   // Map to store the current stats values
   Map<String, double> _currentFirstBallStats = {
@@ -50,6 +81,7 @@ class _StatsScreenState extends State<StatsScreen>
     // Start animation when the screen loads
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeData();
+      _setupLeaderboardListeners();
     });
   }
 
@@ -63,6 +95,10 @@ class _StatsScreenState extends State<StatsScreen>
     });
 
     try {
+      // Get the current user's ID
+      final userData = await _userService.getCurrentUserData();
+      final String? deRingID = userData['deRingID'];
+
       // Fetch all stats in parallel for better performance
       final averageScoreFuture = _statsService.calculateAverageScore();
       final bestScoreFuture = _statsService.getBestScore();
@@ -70,6 +106,7 @@ class _StatsScreenState extends State<StatsScreen>
       final recentScoresFuture = _statsService.getRecentScores(10);
       final firstBallStatsFuture = _statsService.getFirstBallStats();
       final cleanPercentageFuture = _statsService.calculateCleanPercentage();
+      final strikeStreakFuture = _statsService.getLongestStrikeStreak();
 
       // Wait for all stats to be fetched
       final averageScore = await averageScoreFuture;
@@ -78,6 +115,7 @@ class _StatsScreenState extends State<StatsScreen>
       final recentScores = await recentScoresFuture;
       final firstBallStats = await firstBallStatsFuture;
       final cleanPercentage = await cleanPercentageFuture;
+      final longestStrikeStreak = await strikeStreakFuture;
 
       if (mounted) {
         setState(() {
@@ -87,6 +125,8 @@ class _StatsScreenState extends State<StatsScreen>
           _cleanPercentage = cleanPercentage;
           _recentScores = recentScores;
           _currentFirstBallStats = firstBallStats;
+          _longestStrikeStreak = longestStrikeStreak;
+          _currentUserId = deRingID;
           _isLoading = false;
         });
 
@@ -105,14 +145,307 @@ class _StatsScreenState extends State<StatsScreen>
     }
   }
 
+  // Set up real-time listener for leaderboard updates
+  void _setupLeaderboardListeners() {
+    _leaderboardService.initLeaderboardListener();
+
+    // Score leaderboard subscription
+    _scoreLeaderboardSubscription =
+        _leaderboardService.scoreLeaderboardStream.listen((leaderboardData) {
+      if (mounted) {
+        setState(() {
+          _scoreLeaderboardData = leaderboardData;
+          _isLoadingScoreLeaderboard = false;
+        });
+      }
+    }, onError: (error) {
+      print('Error from score leaderboard stream: $error');
+      if (mounted) {
+        setState(() {
+          _isLoadingScoreLeaderboard = false;
+        });
+      }
+    });
+
+    // Strikes leaderboard subscription
+    _strikesLeaderboardSubscription =
+        _leaderboardService.strikesLeaderboardStream.listen((leaderboardData) {
+      if (mounted) {
+        setState(() {
+          _strikesLeaderboardData = leaderboardData;
+          _isLoadingStrikesLeaderboard = false;
+        });
+      }
+    }, onError: (error) {
+      print('Error from strikes leaderboard stream: $error');
+      if (mounted) {
+        setState(() {
+          _isLoadingStrikesLeaderboard = false;
+        });
+      }
+    });
+
+    // Average score leaderboard subscription
+    _averageLeaderboardSubscription =
+        _leaderboardService.averageLeaderboardStream.listen((leaderboardData) {
+      if (mounted) {
+        setState(() {
+          _averageLeaderboardData = leaderboardData;
+          _isLoadingAverageLeaderboard = false;
+        });
+      }
+    }, onError: (error) {
+      print('Error from average leaderboard stream: $error');
+      if (mounted) {
+        setState(() {
+          _isLoadingAverageLeaderboard = false;
+        });
+      }
+    });
+
+    // Strike Streak leaderboard subscription
+    _strikeStreakLeaderboardSubscription = _leaderboardService
+        .strikeStreakLeaderboardStream
+        .listen((leaderboardData) {
+      if (mounted) {
+        setState(() {
+          _strikeStreakLeaderboardData = leaderboardData;
+          _isLoadingStrikeStreakLeaderboard = false;
+        });
+      }
+    }, onError: (error) {
+      print('Error from strike streak leaderboard stream: $error');
+      if (mounted) {
+        setState(() {
+          _isLoadingStrikeStreakLeaderboard = false;
+        });
+      }
+    });
+
+    // DeRing score leaderboard subscription
+    _deringLeaderboardSubscription =
+        _leaderboardService.deringLeaderboardStream.listen((leaderboardData) {
+      if (mounted) {
+        setState(() {
+          _deringLeaderboardData = leaderboardData;
+          _isLoadingDeringLeaderboard = false;
+        });
+      }
+    }, onError: (error) {
+      print('Error from DeRing leaderboard stream: $error');
+      if (mounted) {
+        setState(() {
+          _isLoadingDeringLeaderboard = false;
+        });
+      }
+    });
+
+    // Initial load
+    _loadLeaderboardData();
+  }
+
+  // Method to load leaderboard data
+  Future<void> _loadLeaderboardData() async {
+    if (!mounted) return;
+
+    setState(() {
+      _isLoadingScoreLeaderboard = true;
+      _isLoadingStrikesLeaderboard = true;
+      _isLoadingAverageLeaderboard = true;
+      _isLoadingStrikeStreakLeaderboard = true;
+      _isLoadingDeringLeaderboard = true;
+
+      // Clear previous data to ensure fresh results
+      _scoreLeaderboardData = [];
+      _strikesLeaderboardData = [];
+      _averageLeaderboardData = [];
+      _strikeStreakLeaderboardData = [];
+      _deringLeaderboardData = [];
+    });
+
+    try {
+      // Load all leaderboards in parallel
+      final scoreLeaderboardFuture =
+          _leaderboardService.getTopScoresThisMonth();
+      final strikesLeaderboardFuture =
+          _leaderboardService.getTopStrikesPercentageThisMonth();
+      final averageLeaderboardFuture =
+          _leaderboardService.getTopAverageScoreThisMonth();
+      final strikeStreakLeaderboardFuture =
+          _leaderboardService.getTopStrikeStreakThisMonth();
+      final deringLeaderboardFuture =
+          _leaderboardService.getTopDeRingScoreThisMonth();
+
+      // Wait for all futures to complete
+      final List<dynamic> results = await Future.wait([
+        scoreLeaderboardFuture,
+        strikesLeaderboardFuture,
+        averageLeaderboardFuture,
+        strikeStreakLeaderboardFuture,
+        deringLeaderboardFuture,
+      ]);
+
+      if (mounted) {
+        setState(() {
+          _scoreLeaderboardData = results[0];
+          _strikesLeaderboardData = results[1];
+          _averageLeaderboardData = results[2];
+          _strikeStreakLeaderboardData = results[3];
+          _deringLeaderboardData = results[4];
+          _isLoadingScoreLeaderboard = false;
+          _isLoadingStrikesLeaderboard = false;
+          _isLoadingAverageLeaderboard = false;
+          _isLoadingStrikeStreakLeaderboard = false;
+          _isLoadingDeringLeaderboard = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading leaderboards: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingScoreLeaderboard = false;
+          _isLoadingStrikesLeaderboard = false;
+          _isLoadingAverageLeaderboard = false;
+          _isLoadingStrikeStreakLeaderboard = false;
+          _isLoadingDeringLeaderboard = false;
+        });
+      }
+    }
+  }
+
   // Method to handle the refresh button tap
   Future<void> _refreshStats() async {
+    // Create a unique key to force widget rebuilds
+    final uniqueKey = DateTime.now().microsecondsSinceEpoch.toString();
+
+    // Clear existing leaderboard data to ensure fresh data including profile pictures
+    setState(() {
+      _isLoading = true;
+      _isLoadingScoreLeaderboard = true;
+      _isLoadingStrikesLeaderboard = true;
+      _isLoadingAverageLeaderboard = true;
+      _isLoadingStrikeStreakLeaderboard = true;
+      _isLoadingDeringLeaderboard = true;
+      _scoreLeaderboardData = [];
+      _strikesLeaderboardData = [];
+      _averageLeaderboardData = [];
+      _strikeStreakLeaderboardData = [];
+      _deringLeaderboardData = [];
+    });
+
+    // Clear network image cache to ensure new profile pictures are loaded
+    await _clearImageCache();
+
+    // Now reload all stats and leaderboard data
     await _initializeData();
+    await _loadLeaderboardDataForced();
+  }
+
+  // Load leaderboard data with forced refresh
+  Future<void> _loadLeaderboardDataForced() async {
+    if (!mounted) return;
+
+    setState(() {
+      _isLoadingScoreLeaderboard = true;
+      _isLoadingStrikesLeaderboard = true;
+      _isLoadingAverageLeaderboard = true;
+      _isLoadingStrikeStreakLeaderboard = true;
+      _isLoadingDeringLeaderboard = true;
+
+      // Clear previous data to ensure fresh results
+      _scoreLeaderboardData = [];
+      _strikesLeaderboardData = [];
+      _averageLeaderboardData = [];
+      _strikeStreakLeaderboardData = [];
+      _deringLeaderboardData = [];
+    });
+
+    try {
+      // Force Firestore to refresh its connection
+      await FirebaseFirestore.instance.terminate();
+      await FirebaseFirestore.instance.waitForPendingWrites();
+
+      // Load all leaderboards in parallel
+      final scoreLeaderboardFuture =
+          _leaderboardService.getTopScoresThisMonth();
+      final strikesLeaderboardFuture =
+          _leaderboardService.getTopStrikesPercentageThisMonth();
+      final averageLeaderboardFuture =
+          _leaderboardService.getTopAverageScoreThisMonth();
+      final strikeStreakLeaderboardFuture =
+          _leaderboardService.getTopStrikeStreakThisMonth();
+      final deringLeaderboardFuture =
+          _leaderboardService.getTopDeRingScoreThisMonth();
+
+      // Wait for all futures to complete
+      final List<dynamic> results = await Future.wait([
+        scoreLeaderboardFuture,
+        strikesLeaderboardFuture,
+        averageLeaderboardFuture,
+        strikeStreakLeaderboardFuture,
+        deringLeaderboardFuture,
+      ]);
+
+      if (mounted) {
+        setState(() {
+          _scoreLeaderboardData = results[0];
+          _strikesLeaderboardData = results[1];
+          _averageLeaderboardData = results[2];
+          _strikeStreakLeaderboardData = results[3];
+          _deringLeaderboardData = results[4];
+          _isLoadingScoreLeaderboard = false;
+          _isLoadingStrikesLeaderboard = false;
+          _isLoadingAverageLeaderboard = false;
+          _isLoadingStrikeStreakLeaderboard = false;
+          _isLoadingDeringLeaderboard = false;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading leaderboards: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingScoreLeaderboard = false;
+          _isLoadingStrikesLeaderboard = false;
+          _isLoadingAverageLeaderboard = false;
+          _isLoadingStrikeStreakLeaderboard = false;
+          _isLoadingDeringLeaderboard = false;
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  // Helper method to clear image cache
+  Future<void> _clearImageCache() async {
+    try {
+      // Using PaintingBinding to clear image cache
+      print('Clearing image cache...');
+      PaintingBinding.instance.imageCache.clear();
+      PaintingBinding.instance.imageCache.clearLiveImages();
+
+      // Wait a brief moment to ensure cache clearing completes
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      // Force a garbage collection cycle by creating pressure
+      List<Widget> temp = [];
+      for (int i = 0; i < 1000; i++) {
+        temp.add(Container(width: 1, height: 1));
+      }
+      temp.clear();
+    } catch (e) {
+      print('Error clearing image cache: $e');
+    }
   }
 
   @override
   void dispose() {
     _animationController.dispose();
+    _scoreLeaderboardSubscription?.cancel();
+    _strikesLeaderboardSubscription?.cancel();
+    _averageLeaderboardSubscription?.cancel();
+    _strikeStreakLeaderboardSubscription?.cancel();
+    _deringLeaderboardSubscription?.cancel();
     super.dispose();
   }
 
@@ -124,6 +457,7 @@ class _StatsScreenState extends State<StatsScreen>
       'best': _bestScore,
       'cleanPercentage': _cleanPercentage,
       'gamesPlayed': _gamesPlayed,
+      'strikeStreak': _longestStrikeStreak,
     };
 
     // Use recent scores or empty list if none available
@@ -224,6 +558,12 @@ class _StatsScreenState extends State<StatsScreen>
                                 _buildStatBox(
                                   title: 'Strike/Spare',
                                   value: '${statsData['cleanPercentage']}%',
+                                ),
+
+                                // Strike Streak Box
+                                _buildStatBox(
+                                  title: 'Strike Streak',
+                                  value: statsData['strikeStreak'].toString(),
                                 ),
                               ],
                             ),
@@ -326,6 +666,41 @@ class _StatsScreenState extends State<StatsScreen>
                               ],
                             ),
                           ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 48), // Gap between sections
+
+                      // Leaderboard Section - Both Score and Strikes %
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Title row with Leaderboard and This month
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                'Leaderboard',
+                                style: TextStyle(
+                                  fontSize: 32,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.black,
+                                ),
+                              ),
+                              const Text(
+                                'This month',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+
+                          // Combined leaderboard container
+                          _buildCombinedLeaderboard(),
                         ],
                       ),
                     ],
@@ -478,6 +853,417 @@ class _StatsScreenState extends State<StatsScreen>
           ),
         ),
       ],
+    );
+  }
+
+  // Helper method to build the combined leaderboard
+  Widget _buildCombinedLeaderboard() {
+    if (_isLoadingScoreLeaderboard ||
+        _isLoadingStrikesLeaderboard ||
+        _isLoadingAverageLeaderboard ||
+        _isLoadingStrikeStreakLeaderboard ||
+        _isLoadingDeringLeaderboard) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(32.0),
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    // Show empty state if all leaderboards are empty
+    if (_scoreLeaderboardData.isEmpty &&
+        _strikesLeaderboardData.isEmpty &&
+        _averageLeaderboardData.isEmpty &&
+        _strikeStreakLeaderboardData.isEmpty &&
+        _deringLeaderboardData.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.symmetric(vertical: 32.0),
+        alignment: Alignment.center,
+        child: Column(
+          children: [
+            Icon(
+              Icons.emoji_events_outlined,
+              size: 48,
+              color: Colors.grey.shade400,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Be the first up here!',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w500,
+                color: Colors.grey.shade600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Play games to see your ranking',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey.shade500,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Single container for all leaderboards
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey.shade300, width: 1.5),
+        borderRadius: BorderRadius.circular(12.0),
+      ),
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Best Score Section
+          if (_scoreLeaderboardData.isNotEmpty) ...[
+            const Padding(
+              padding: EdgeInsets.only(left: 8.0),
+              child: Text(
+                "Best Score",
+                style: TextStyle(
+                  fontSize: 20.0,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            ...List.generate(_scoreLeaderboardData.length, (index) {
+              final player = _scoreLeaderboardData[index];
+              final bool isCurrentUser = player['userId'] == _currentUserId;
+              return Padding(
+                padding: const EdgeInsets.only(left: 8.0),
+                child: LeaderboardItem(
+                  userId: player['userId'],
+                  firstName: player['firstName'],
+                  lastName: player['lastName'] ?? '',
+                  score: player['score'],
+                  profileUrl: player['profileUrl'] ?? '',
+                  rank: index + 1,
+                  isCurrentUser: isCurrentUser,
+                ),
+              );
+            }),
+          ],
+
+          // Add divider between sections if there's content above and below
+          if (_scoreLeaderboardData.isNotEmpty &&
+              (_strikesLeaderboardData.isNotEmpty ||
+                  _averageLeaderboardData.isNotEmpty ||
+                  _strikeStreakLeaderboardData.isNotEmpty ||
+                  _deringLeaderboardData.isNotEmpty)) ...[
+            const SizedBox(height: 24),
+            Divider(color: Colors.grey.shade300, thickness: 1.5),
+            const SizedBox(height: 16),
+          ],
+
+          // Game Average Section
+          if (_averageLeaderboardData.isNotEmpty) ...[
+            const Padding(
+              padding: EdgeInsets.only(left: 8.0),
+              child: Text(
+                "Game Average",
+                style: TextStyle(
+                  fontSize: 20.0,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            ...List.generate(_averageLeaderboardData.length, (index) {
+              final player = _averageLeaderboardData[index];
+              final bool isCurrentUser = player['userId'] == _currentUserId;
+              return Padding(
+                padding: const EdgeInsets.only(left: 8.0),
+                child: AverageLeaderboardItem(
+                  userId: player['userId'],
+                  firstName: player['firstName'],
+                  lastName: player['lastName'] ?? '',
+                  average: player['average'],
+                  profileUrl: player['profileUrl'] ?? '',
+                  rank: index + 1,
+                  isCurrentUser: isCurrentUser,
+                ),
+              );
+            }),
+          ],
+
+          // Add divider between sections if there's content above and below
+          if ((_scoreLeaderboardData.isNotEmpty ||
+                  _averageLeaderboardData.isNotEmpty) &&
+              (_strikesLeaderboardData.isNotEmpty ||
+                  _strikeStreakLeaderboardData.isNotEmpty ||
+                  _deringLeaderboardData.isNotEmpty)) ...[
+            const SizedBox(height: 24),
+            Divider(color: Colors.grey.shade300, thickness: 1.5),
+            const SizedBox(height: 16),
+          ],
+
+          // Strikes % Section
+          if (_strikesLeaderboardData.isNotEmpty) ...[
+            const Padding(
+              padding: EdgeInsets.only(left: 8.0),
+              child: Text(
+                "Strikes %",
+                style: TextStyle(
+                  fontSize: 20.0,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            ...List.generate(_strikesLeaderboardData.length, (index) {
+              final player = _strikesLeaderboardData[index];
+              final bool isCurrentUser = player['userId'] == _currentUserId;
+              return Padding(
+                padding: const EdgeInsets.only(left: 8.0),
+                child: StrikesLeaderboardItem(
+                  userId: player['userId'],
+                  firstName: player['firstName'],
+                  lastName: player['lastName'] ?? '',
+                  percentage: player['percentage'],
+                  profileUrl: player['profileUrl'] ?? '',
+                  rank: index + 1,
+                  isCurrentUser: isCurrentUser,
+                ),
+              );
+            }),
+          ],
+
+          // Add divider between Strikes % and Strike Streak sections if needed
+          if ((_scoreLeaderboardData.isNotEmpty ||
+                  _averageLeaderboardData.isNotEmpty ||
+                  _strikesLeaderboardData.isNotEmpty) &&
+              (_strikeStreakLeaderboardData.isNotEmpty ||
+                  _deringLeaderboardData.isNotEmpty)) ...[
+            const SizedBox(height: 24),
+            Divider(color: Colors.grey.shade300, thickness: 1.5),
+            const SizedBox(height: 16),
+          ],
+
+          // Strike Streak Section
+          if (_strikeStreakLeaderboardData.isNotEmpty) ...[
+            const Padding(
+              padding: EdgeInsets.only(left: 8.0),
+              child: Text(
+                "Strike Streak",
+                style: TextStyle(
+                  fontSize: 20.0,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            ...List.generate(_strikeStreakLeaderboardData.length, (index) {
+              final player = _strikeStreakLeaderboardData[index];
+              final bool isCurrentUser = player['userId'] == _currentUserId;
+              return Padding(
+                padding: const EdgeInsets.only(left: 8.0),
+                child: StrikeStreakLeaderboardItem(
+                  userId: player['userId'],
+                  firstName: player['firstName'],
+                  lastName: player['lastName'] ?? '',
+                  strikeStreak: player['strikeStreak'],
+                  profileUrl: player['profileUrl'] ?? '',
+                  rank: index + 1,
+                  isCurrentUser: isCurrentUser,
+                ),
+              );
+            }),
+          ],
+
+          // Add divider before DeRing section if needed
+          if ((_scoreLeaderboardData.isNotEmpty ||
+                  _averageLeaderboardData.isNotEmpty ||
+                  _strikesLeaderboardData.isNotEmpty ||
+                  _strikeStreakLeaderboardData.isNotEmpty) &&
+              _deringLeaderboardData.isNotEmpty) ...[
+            const SizedBox(height: 24),
+            Divider(color: Colors.grey.shade300, thickness: 1.5),
+            const SizedBox(height: 16),
+          ],
+
+          // DeRing Score Section
+          if (_deringLeaderboardData.isNotEmpty) ...[
+            const Padding(
+              padding: EdgeInsets.only(left: 8.0),
+              child: Text(
+                "DeRing Score",
+                style: TextStyle(
+                  fontSize: 20.0,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            ...List.generate(_deringLeaderboardData.length, (index) {
+              final player = _deringLeaderboardData[index];
+              final bool isCurrentUser = player['userId'] == _currentUserId;
+              return Padding(
+                padding: const EdgeInsets.only(left: 8.0),
+                child: DeRingLeaderboardItem(
+                  userId: player['userId'],
+                  firstName: player['firstName'],
+                  lastName: player['lastName'] ?? '',
+                  deringScore: player['deringScore'],
+                  profileUrl: player['profileUrl'] ?? '',
+                  rank: index + 1,
+                  isCurrentUser: isCurrentUser,
+                ),
+              );
+            }),
+          ],
+
+          // Empty states for each section if data is missing but other sections have data
+          if (_scoreLeaderboardData.isEmpty &&
+              (_strikesLeaderboardData.isNotEmpty ||
+                  _averageLeaderboardData.isNotEmpty ||
+                  _strikeStreakLeaderboardData.isNotEmpty ||
+                  _deringLeaderboardData.isNotEmpty)) ...[
+            const Padding(
+              padding: EdgeInsets.only(left: 8.0),
+              child: Text(
+                "Best Score",
+                style: TextStyle(
+                  fontSize: 20.0,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            _buildEmptySection(
+                Icons.emoji_events_outlined, 'No score data yet'),
+            const SizedBox(height: 24),
+            Divider(color: Colors.grey.shade300, thickness: 1.5),
+            const SizedBox(height: 16),
+          ],
+
+          if (_averageLeaderboardData.isEmpty &&
+              (_scoreLeaderboardData.isNotEmpty ||
+                  _strikesLeaderboardData.isNotEmpty ||
+                  _strikeStreakLeaderboardData.isNotEmpty ||
+                  _deringLeaderboardData.isNotEmpty)) ...[
+            const Padding(
+              padding: EdgeInsets.only(left: 8.0),
+              child: Text(
+                "Game Average",
+                style: TextStyle(
+                  fontSize: 20.0,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            _buildEmptySection(Icons.trending_up, 'No average data yet'),
+            const SizedBox(height: 24),
+            Divider(color: Colors.grey.shade300, thickness: 1.5),
+            const SizedBox(height: 16),
+          ],
+
+          if (_strikesLeaderboardData.isEmpty &&
+              (_scoreLeaderboardData.isNotEmpty ||
+                  _averageLeaderboardData.isNotEmpty ||
+                  _strikeStreakLeaderboardData.isNotEmpty ||
+                  _deringLeaderboardData.isNotEmpty)) ...[
+            const Padding(
+              padding: EdgeInsets.only(left: 8.0),
+              child: Text(
+                "Strikes %",
+                style: TextStyle(
+                  fontSize: 20.0,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            _buildEmptySection(Icons.sports_cricket, 'No strike data yet'),
+            const SizedBox(height: 24),
+            Divider(color: Colors.grey.shade300, thickness: 1.5),
+            const SizedBox(height: 16),
+          ],
+
+          if (_strikeStreakLeaderboardData.isEmpty &&
+              (_scoreLeaderboardData.isNotEmpty ||
+                  _averageLeaderboardData.isNotEmpty ||
+                  _strikesLeaderboardData.isNotEmpty ||
+                  _deringLeaderboardData.isNotEmpty)) ...[
+            const Padding(
+              padding: EdgeInsets.only(left: 8.0),
+              child: Text(
+                "Strike Streak",
+                style: TextStyle(
+                  fontSize: 20.0,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            _buildEmptySection(Icons.bolt, 'No strike streak data yet'),
+            const SizedBox(height: 24),
+            Divider(color: Colors.grey.shade300, thickness: 1.5),
+            const SizedBox(height: 16),
+          ],
+
+          if (_deringLeaderboardData.isEmpty &&
+              (_scoreLeaderboardData.isNotEmpty ||
+                  _averageLeaderboardData.isNotEmpty ||
+                  _strikesLeaderboardData.isNotEmpty ||
+                  _strikeStreakLeaderboardData.isNotEmpty)) ...[
+            const Padding(
+              padding: EdgeInsets.only(left: 8.0),
+              child: Text(
+                "DeRing Score",
+                style: TextStyle(
+                  fontSize: 20.0,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            _buildEmptySection(Icons.looks, 'No DeRing score data yet'),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // Helper method to build empty section placeholder
+  Widget _buildEmptySection(IconData icon, String message) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 16.0),
+      child: Center(
+        child: Column(
+          children: [
+            Icon(
+              icon,
+              size: 36,
+              color: Colors.grey.shade400,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              message,
+              style: TextStyle(
+                fontSize: 16,
+                color: Colors.grey.shade600,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

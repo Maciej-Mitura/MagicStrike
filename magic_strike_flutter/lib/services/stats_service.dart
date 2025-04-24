@@ -368,4 +368,104 @@ class StatsService {
       return 0;
     }
   }
+
+  /// Calculate the longest streak of consecutive strikes in a game
+  Future<int> getLongestStrikeStreak() async {
+    try {
+      final games = await getUserGames();
+      if (games.isEmpty) {
+        return 0;
+      }
+
+      // Get current user's deRingID and firstName
+      final userData = await _userService.getCurrentUserData();
+      final String? deRingID = userData['deRingID'];
+      final String? firstName = userData['firstName'];
+
+      if (deRingID == null || firstName == null) {
+        return 0;
+      }
+
+      // Track the longest streak across all games
+      int longestStreak = 0;
+
+      for (final game in games) {
+        final players = game['players'] as List<dynamic>;
+        for (final player in players) {
+          if (player is Map &&
+              player['userId'] == deRingID &&
+              player['firstName'] == firstName &&
+              player['throwsPerFrame'] != null) {
+            final throwsPerFrame =
+                player['throwsPerFrame'] as Map<String, dynamic>;
+
+            // Convert to ordered list of frames (by frame number)
+            final List<MapEntry<int, List<dynamic>>> orderedFrames = [];
+            for (final frameKey in throwsPerFrame.keys) {
+              final frameNumber =
+                  int.tryParse(frameKey.replaceAll('frame', '')) ?? 0;
+              orderedFrames.add(MapEntry(
+                  frameNumber, throwsPerFrame[frameKey] as List<dynamic>));
+            }
+
+            // Sort frames by frame number
+            orderedFrames.sort((a, b) => a.key.compareTo(b.key));
+
+            // Calculate streak in this game
+            int currentStreak = 0;
+            int gameMaxStreak = 0;
+
+            for (int i = 0; i < orderedFrames.length; i++) {
+              final frameEntry = orderedFrames[i];
+              final throws = frameEntry.value;
+              final frameNumber = frameEntry.key;
+
+              // Check for strike
+              if (throws.isNotEmpty && throws[0] is int && throws[0] == 10) {
+                currentStreak++;
+                if (currentStreak > gameMaxStreak) {
+                  gameMaxStreak = currentStreak;
+                }
+
+                // Special handling for 10th frame (can have up to 3 strikes)
+                if (frameNumber == 10 && throws.length > 1) {
+                  // Check for second strike in 10th frame
+                  if (throws.length >= 2 &&
+                      throws[1] is int &&
+                      throws[1] == 10) {
+                    currentStreak++;
+                    if (currentStreak > gameMaxStreak) {
+                      gameMaxStreak = currentStreak;
+                    }
+
+                    // Check for third strike in 10th frame
+                    if (throws.length >= 3 &&
+                        throws[2] is int &&
+                        throws[2] == 10) {
+                      currentStreak++;
+                      if (currentStreak > gameMaxStreak) {
+                        gameMaxStreak = currentStreak;
+                      }
+                    }
+                  }
+                }
+              } else {
+                currentStreak = 0; // Reset streak
+              }
+            }
+
+            // Update longest streak if this game had a longer one
+            if (gameMaxStreak > longestStreak) {
+              longestStreak = gameMaxStreak;
+            }
+          }
+        }
+      }
+
+      return longestStreak;
+    } catch (e) {
+      print('Error calculating longest strike streak: $e');
+      return 0;
+    }
+  }
 }
