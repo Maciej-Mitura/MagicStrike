@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'dart:ui';
+
+
 import '../constants/app_colors.dart';
 import '../constants/badge_data.dart';
 import '../services/badge_service.dart';

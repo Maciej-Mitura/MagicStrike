@@ -38,7 +38,7 @@ flutter:
   assets:
     - assets/
     - assets/fonts/
-    - assets/badge_icons/
+
   # Temporarily commenting out fonts until we have the files
   # fonts:
   #   - family: IstokWeb

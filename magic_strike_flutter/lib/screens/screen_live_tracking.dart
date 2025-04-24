@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:magic_strike_flutter/constants/app_colors.dart';
-import 'package:magic_strike_flutter/models/game_model.dart';
+
 import 'package:magic_strike_flutter/services/firestore_service.dart';
 import 'package:magic_strike_flutter/services/user_service.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class LiveTrackingScreen extends StatefulWidget {

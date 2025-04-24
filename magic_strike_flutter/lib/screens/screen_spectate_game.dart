@@ -628,7 +628,7 @@ class _SpectateGameScreenState extends State<SpectateGameScreen> {
               ),
             ),
           );
-        }).toList(),
+        }),
       ],
     );
   }

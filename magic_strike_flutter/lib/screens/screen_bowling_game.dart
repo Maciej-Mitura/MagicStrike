@@ -484,7 +484,7 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
           final frame = BowlingFrame(frameIndex: frameIndex - 1);
 
           // Set throw values if they exist
-          if (frameThrows.isNotEmpty && frameThrows.length >= 1) {
+          if (frameThrows.isNotEmpty) {
             frame.firstThrow = frameThrows[0];
           }
           // Leave as null otherwise - don't initialize with 0
@@ -1099,11 +1099,11 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
             padding: const EdgeInsets.only(top: 8.0),
             child: TextButton(
               onPressed: _cancelFrameEdit,
-              child: const Text('Cancel Edit'),
               style: TextButton.styleFrom(
                 foregroundColor: Colors.black,
                 splashFactory: NoSplash.splashFactory,
               ),
+              child: const Text('Cancel Edit'),
             ),
           ),
       ],
@@ -1728,7 +1728,7 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
           final List<dynamic> fThrows = List.from(playerThrows[fKey] ?? []);
 
           final frame = BowlingFrame(frameIndex: frameIndex - 1);
-          if (fThrows.isNotEmpty && fThrows.length >= 1) {
+          if (fThrows.isNotEmpty) {
             frame.firstThrow = fThrows[0];
           }
           if (fThrows.isNotEmpty && fThrows.length >= 2) {
@@ -2694,19 +2694,5 @@ class _BowlingGameScreenState extends State<BowlingGameScreen> {
           ),
         ) ??
         false;
-  }
-
-  // Add a test method to verify our vibration service works properly
-  Future<void> _testVibration() async {
-    final canVibrate = await _vibrationService.hasVibrator();
-    print('Device can vibrate: $canVibrate');
-    if (canVibrate) {
-      await _vibrationService.vibrateForStrike();
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Testing vibration...')));
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Device cannot vibrate!')));
-    }
   }
 }

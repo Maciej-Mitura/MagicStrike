@@ -6,7 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:image_picker/image_picker.dart';
-import 'dart:io';
+
 import 'dart:convert';
 import 'package:firebase_storage/firebase_storage.dart';
 
@@ -288,129 +288,6 @@ class _MoreSettingsScreenState extends State<MoreSettingsScreen>
           _isLoading = false;
         });
       }
-    }
-  }
-
-  // Basic approach - store a small image directly in Firestore as base64
-  // This is highly reliable but only suitable for small images
-  Future<String?> _simpleBase64Approach() async {
-    try {
-      final ImagePicker picker = ImagePicker();
-
-      // Show feedback to user
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Please select a small image...'),
-            duration: Duration(seconds: 1),
-          ),
-        );
-      }
-
-      // Configure picker for reliable selection with smaller image size
-      final XFile? image = await picker.pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 200, // Very small width
-        maxHeight: 200, // Very small height
-        imageQuality: 50, // Heavy compression
-        requestFullMetadata:
-            false, // Reduces memory usage and improves reliability
-      );
-
-      // Check if mounted after picker returns
-      if (!mounted) return null;
-
-      if (image == null) {
-        print('Simple approach: No image selected (user cancelled)');
-        return null;
-      }
-
-      print('Simple approach: Image selected: ${image.path}');
-
-      final User? currentUser = FirebaseAuth.instance.currentUser;
-      if (currentUser == null) {
-        throw Exception('No user is logged in');
-      }
-
-      // Read bytes directly from XFile - this is the most reliable approach
-      Uint8List imageBytes;
-      try {
-        imageBytes = await image.readAsBytes();
-        if (imageBytes.isEmpty) {
-          throw Exception('Selected image is empty');
-        }
-        print(
-            'Successfully read ${imageBytes.length} bytes from selected image');
-      } catch (e) {
-        print('Error reading image data: $e');
-        return null;
-      }
-
-      // Check mounted again
-      if (!mounted) return null;
-
-      // Show processing feedback
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Processing image...'),
-            duration: Duration(seconds: 1),
-          ),
-        );
-      }
-
-      // Generate base64 string
-      final String base64Image = base64Encode(imageBytes);
-      print('Base64 image length: ${base64Image.length} characters');
-
-      // Firestore has document size limits, so ensure it's not too large
-      if (base64Image.length > 900000) {
-        throw Exception('Image too large, please select a smaller image');
-      }
-
-      // Generate data URL (works in most browsers/apps)
-      final String dataUrl = 'data:image/jpeg;base64,$base64Image';
-
-      try {
-        // Update user document with base64 image
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(currentUser.uid)
-            .update({
-          'profilePictureBase64': dataUrl,
-          // Remove any URL-based image to avoid conflicts
-          'profilePicture': FieldValue.delete(),
-        });
-
-        print('Simple approach: Profile picture saved as base64');
-        return dataUrl;
-      } catch (updateError) {
-        print('Error updating Firestore: $updateError');
-
-        // Try once more if operation was cancelled
-        if (updateError.toString().contains('cancelled')) {
-          try {
-            await Future.delayed(const Duration(milliseconds: 1000));
-            await FirebaseFirestore.instance
-                .collection('users')
-                .doc(currentUser.uid)
-                .update({
-              'profilePictureBase64': dataUrl,
-              'profilePicture': FieldValue.delete(),
-            });
-
-            print('Simple approach retry: Profile picture saved as base64');
-            return dataUrl;
-          } catch (retryError) {
-            print('Retry also failed: $retryError');
-            return null;
-          }
-        }
-        return null;
-      }
-    } catch (e) {
-      print('Error in simple base64 approach: $e');
-      return null;
     }
   }
 
@@ -950,7 +827,7 @@ class _MoreSettingsScreenState extends State<MoreSettingsScreen>
                     await currentUser.updatePassword(passwordController.text);
 
                     // Success message
-                    if (this.mounted) {
+                    if (mounted) {
                       ScaffoldMessenger.of(this.context).showSnackBar(
                         const SnackBar(
                           content: Text('Password updated successfully'),
@@ -961,7 +838,7 @@ class _MoreSettingsScreenState extends State<MoreSettingsScreen>
                   }
                 } catch (e) {
                   print('Error updating password: $e');
-                  if (this.mounted) {
+                  if (mounted) {
                     ScaffoldMessenger.of(this.context).showSnackBar(
                       SnackBar(
                         content: Text('Error updating password: $e'),

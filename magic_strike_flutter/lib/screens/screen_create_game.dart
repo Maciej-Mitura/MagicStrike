@@ -205,7 +205,7 @@ class _CreateGameScreenState extends State<CreateGameScreen> {
   void _updatePlayerCount(int count) {
     if (count < 1) count = 1;
     if (count < _players.length)
-      count = _players.length; // Don't reduce below actual player count
+      {count = _players.length; }// Don't reduce below actual player count
     if (count > 6) count = 6; // Maximum 6 players
 
     setState(() {
