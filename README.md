@@ -6,19 +6,21 @@ A Flutter-based mobile app for tracking and improving your bowling performance. 
 🔹 Key Features:
 
 
-✅ Home Screen Widget – Quickly view live scores without opening the app.
-
-✅ Smart Notifications – Get practice reminders and leaderboard updates.
+✅ Event countdwn - Never miss out on the latest events.
 
 ✅ Haptic Feedback – Feel the thrill of a strike with vibration effects.
 
-✅ Offline Mode – Track games anywhere, even without an internet connection.
-
-✅ Quick Actions – Long-press the app icon to instantly start a new game.
-
 ✅ Motion Detection – Shake your phone to undo the last score.
 
-✅ Auto-Detect Bowling Alleys (GPS) – Automatically log where you play and analyze your best venues.
+✅ Play against your friends - Play with or against your friends by sharing the room-code.
+
+✅ Statistics - Get a view on your statistics based off your gamehistory.
+
+✅ Competition - Compete in monthly leaderboards with all other players.
+
+✅ Go for more - Achieve badges by completing challenges.
+
+✅ Find us! - Would you like to see Bowling DeRing in real life? You can find us with 1 simple click.
 
 
 
