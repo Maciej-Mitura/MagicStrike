@@ -314,6 +314,21 @@ class _LoginScreenState extends State<LoginScreen> {
                             obscureText: _obscurePassword,
                           ),
                         ),
+
+                        // Forgot Password Text
+                        Padding(
+                          padding: const EdgeInsets.only(top: 12.0),
+                          child: GestureDetector(
+                            onTap: _showForgotPasswordDialog,
+                            child: Text(
+                              'Forgot your password?',
+                              style: TextStyle(
+                                color: Colors.grey,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ),
+                        ),
                       ],
                     ),
 
@@ -392,6 +407,125 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  // Add this method to handle forgot password
+  void _showForgotPasswordDialog() {
+    final TextEditingController emailController = TextEditingController();
+    String? emailError;
+    bool isLoading = false;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            title: const Text('Reset Password'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: emailController,
+                  decoration: InputDecoration(
+                    hintText: 'Enter your email',
+                    errorText: emailError,
+                    border: const OutlineInputBorder(),
+                  ),
+                  keyboardType: TextInputType.emailAddress,
+                ),
+                if (isLoading)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 16.0),
+                    child: CircularProgressIndicator(),
+                  ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: isLoading
+                    ? null
+                    : () async {
+                        final email = emailController.text.trim();
+                        if (email.isEmpty) {
+                          setState(() {
+                            emailError = 'Please enter your email';
+                          });
+                          return;
+                        }
+
+                        // Validate email format with regex
+                        final emailRegex =
+                            RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+                        if (!emailRegex.hasMatch(email)) {
+                          setState(() {
+                            emailError = 'Please enter a valid email address';
+                          });
+                          return;
+                        }
+
+                        setState(() {
+                          isLoading = true;
+                          emailError = null;
+                        });
+
+                        try {
+                          // Skip checking if email exists and directly send reset email
+                          await FirebaseAuth.instance.sendPasswordResetEmail(
+                            email: email,
+                          );
+
+                          if (!mounted) return;
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                  'If an account exists with this email, a password reset link will be sent.'),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                        } on FirebaseAuthException catch (e) {
+                          print(
+                              'Firebase auth error: ${e.code} - ${e.message}');
+                          // Don't show specific errors to users for security reasons
+                          // Just show a generic message
+                          if (!mounted) return;
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                  'If an account exists with this email, a password reset link will be sent.'),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                        } catch (e) {
+                          print('General error during password reset: $e');
+                          // Same generic message
+                          if (!mounted) return;
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                  'If an account exists with this email, a password reset link will be sent.'),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                        } finally {
+                          setState(() {
+                            isLoading = false;
+                          });
+                        }
+                      },
+                child: const Text('Reset Password'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

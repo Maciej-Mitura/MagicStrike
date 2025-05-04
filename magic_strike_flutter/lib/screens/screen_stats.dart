@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart'; // For PaintingBinding
+
 import 'package:magic_strike_flutter/constants/app_colors.dart';
 import 'package:magic_strike_flutter/services/stats_service.dart';
 import 'package:magic_strike_flutter/services/leaderboard_service.dart';
@@ -1276,13 +1276,8 @@ class ScoreGraphPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Ensure we always have 10 scores to display
-    final List<int> displayScores = _getDisplayScores();
-
-    if (displayScores.every((score) => score == 0)) {
-      _drawNoDataMessage(canvas, size);
-      return;
-    }
+    // Get the scores to display (only non-zero scores)
+    final List<int> actualScores = _getDisplayScores();
 
     // Always use fixed scale from 0 to 300
     final int yAxisMax = 300;
@@ -1366,12 +1361,12 @@ class ScoreGraphPainter extends CustomPainter {
           Offset(leftMargin + graphWidth + 8, y - textPainter.height / 2));
     }
 
-    // Always use 10 games for X-axis
-    final int gameCount = displayScores.length;
-    final double xStep = graphWidth / (gameCount - 1);
+    // Always display 10 x-axis positions
+    final int totalXPositions = 10;
+    final double xStep = graphWidth / (totalXPositions - 1);
 
-    // Draw grid lines and X-axis labels for all games
-    for (int i = 0; i < gameCount; i++) {
+    // Draw grid lines and X-axis labels for all 10 potential games
+    for (int i = 0; i < totalXPositions; i++) {
       final x = leftMargin + (i * xStep);
 
       // Draw vertical grid line
@@ -1381,7 +1376,7 @@ class ScoreGraphPainter extends CustomPainter {
         gridPaint,
       );
 
-      // Draw X-axis label (just the number) for all games
+      // Draw X-axis label (just the number) for all positions
       final textSpan = TextSpan(
         text: (i + 1).toString(),
         style: yAxisTextStyle,
@@ -1421,72 +1416,82 @@ class ScoreGraphPainter extends CustomPainter {
       ),
     );
 
-    // Draw the path connecting ALL points, including zeros
-    final path = Path();
-
-    for (int i = 0; i < displayScores.length; i++) {
-      final x = leftMargin + (i * xStep);
-      final score = displayScores[i];
-      final y = topMargin + graphHeight - (score * graphHeight / yAxisMax);
-
-      if (i == 0) {
-        path.moveTo(x, y);
-      } else {
-        path.lineTo(x, y);
-      }
+    if (actualScores.isEmpty) {
+      _drawNoDataMessage(canvas, size);
+      return;
     }
 
-    canvas.drawPath(path, graphPaint);
+    // Place the actual scores in the most recent positions (right side of graph)
+    // For example, if there are 3 scores and 10 positions, place them at positions 8, 9, 10
+    final int startPosition = totalXPositions - actualScores.length;
 
-    // Draw points for all games, including zeros
-    for (int i = 0; i < displayScores.length; i++) {
-      final x = leftMargin + (i * xStep);
-      final score = displayScores[i];
+    // Draw the path connecting only the actual score points
+    if (actualScores.length > 1) {
+      final path = Path();
+      bool firstPoint = true;
+
+      for (int i = 0; i < actualScores.length; i++) {
+        final graphPosition = startPosition + i;
+        final x = leftMargin + (graphPosition * xStep);
+        final score = actualScores[i];
+        final y = topMargin + graphHeight - (score * graphHeight / yAxisMax);
+
+        if (firstPoint) {
+          path.moveTo(x, y);
+          firstPoint = false;
+        } else {
+          path.lineTo(x, y);
+        }
+      }
+
+      canvas.drawPath(path, graphPaint);
+    }
+
+    // Draw points for all actual scores
+    for (int i = 0; i < actualScores.length; i++) {
+      final graphPosition = startPosition + i;
+      final x = leftMargin + (graphPosition * xStep);
+      final score = actualScores[i];
       final y = topMargin + graphHeight - (score * graphHeight / yAxisMax);
 
-      // Draw point (even for zero scores)
+      // Draw point
       canvas.drawCircle(Offset(x, y), 5, pointPaint);
       canvas.drawCircle(Offset(x, y), 6, pointOuterPaint);
 
-      // Draw score label above the point (only for non-zero scores)
-      if (score > 0) {
-        final textSpan = TextSpan(
-          text: score.toString(),
-          style: const TextStyle(
-            color: Colors.grey,
-            fontSize: 10,
-            fontWeight: FontWeight.w500,
-          ),
-        );
-        final textPainter = TextPainter(
-          text: textSpan,
-          textDirection: TextDirection.ltr,
-          textAlign: TextAlign.center,
-        );
-        textPainter.layout();
-        textPainter.paint(
-          canvas,
-          Offset(x - textPainter.width / 2, y - textPainter.height - 6),
-        );
-      }
+      // Draw score label above the point
+      final textSpan = TextSpan(
+        text: score.toString(),
+        style: const TextStyle(
+          color: Colors.grey,
+          fontSize: 10,
+          fontWeight: FontWeight.w500,
+        ),
+      );
+      final textPainter = TextPainter(
+        text: textSpan,
+        textDirection: TextDirection.ltr,
+        textAlign: TextAlign.center,
+      );
+      textPainter.layout();
+      textPainter.paint(
+        canvas,
+        Offset(x - textPainter.width / 2, y - textPainter.height - 6),
+      );
     }
   }
 
   // Get exactly 10 scores for display, with newest scores at the end
   List<int> _getDisplayScores() {
     if (scores.isEmpty) {
-      return List.filled(10, 0);
+      return []; // Return empty list instead of filling with zeros
     }
 
     List<int> result = List<int>.from(scores);
 
-    // If we have fewer than 10 scores, pad with zeros at the beginning
-    if (result.length < 10) {
-      final leadingZeros = List.filled(10 - result.length, 0);
-      result = [...leadingZeros, ...result];
-    }
+    // Filter out any zero scores
+    result = result.where((score) => score > 0).toList();
 
-    // If we have more than
+    // If we have more than 10 scores, just keep the 10 most recent
     if (result.length > 10) {
       result = result.sublist(result.length - 10);
     }
